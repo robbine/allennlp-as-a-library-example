@@ -14,8 +14,8 @@
       <file leaf-file-name="biaowen_mingxi_classifier.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/models/biaowen_mingxi_classifier.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-1759">
-              <caret line="18" column="7" lean-forward="true" selection-start-line="18" selection-start-column="7" selection-end-line="18" selection-end-column="7" />
+            <state relative-caret-position="240">
+              <caret line="16" column="31" lean-forward="false" selection-start-line="16" selection-start-column="17" selection-end-line="16" selection-end-column="31" />
               <folding>
                 <element signature="e#0#44#0" expanded="true" />
               </folding>
@@ -23,35 +23,13 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="semantic_scholar_papers.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/dataset_readers/semantic_scholar_papers.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="560">
-              <caret line="81" column="23" lean-forward="false" selection-start-line="81" selection-start-column="15" selection-end-line="81" selection-end-column="23" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
       <file leaf-file-name="biao_wen_ming_xi.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/dataset_readers/biao_wen_ming_xi.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="487">
-              <caret line="85" column="57" lean-forward="true" selection-start-line="85" selection-start-column="57" selection-end-line="85" selection-end-column="57" />
+            <state relative-caret-position="620">
+              <caret line="94" column="35" lean-forward="false" selection-start-line="94" selection-start-column="35" selection-end-line="94" selection-end-column="35" />
               <folding>
                 <element signature="e#24#47#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="academic_paper_classifier.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/models/academic_paper_classifier.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="396">
-              <caret line="118" column="26" lean-forward="false" selection-start-line="118" selection-start-column="15" selection-end-line="118" selection-end-column="26" />
-              <folding>
-                <element signature="e#0#33#0" expanded="true" />
               </folding>
             </state>
           </provider>
@@ -307,34 +285,6 @@
     <watches-manager />
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$USER_HOME$/anaconda3/envs/pytorch0.4/lib/python3.6/site-packages/allennlp/data/tokenizers/word_tokenizer.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-106">
-          <caret line="41" column="68" lean-forward="false" selection-start-line="41" selection-start-column="68" selection-end-line="41" selection-end-column="68" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/tokenizers/jieba_tokenizer.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="367">
-          <caret line="63" column="47" lean-forward="false" selection-start-line="63" selection-start-column="36" selection-end-line="63" selection-end-column="47" />
-          <folding>
-            <element signature="e#0#23#0" expanded="false" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/tokenizers/jieba_splitter.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="29">
-          <caret line="57" column="32" lean-forward="false" selection-start-line="57" selection-start-column="32" selection-end-line="57" selection-end-column="32" />
-          <folding>
-            <element signature="e#0#9#0" expanded="false" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$USER_HOME$/anaconda3/envs/pytorch0.4/lib/python3.6/site-packages/webencodings/labels.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="-2792">
@@ -659,12 +609,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="103">
           <caret line="53" column="20" lean-forward="true" selection-start-line="53" selection-start-column="20" selection-end-line="53" selection-end-column="20" />
-          <folding>
-            <marker date="1530939130861" expanded="true" signature="0:2318" ph="{&quot;train_data_path&quot;: &quot;/Users/songhan/Downloads/biao_wen_ming_xi_zi_zhu_shu_chu_20180122.xlsx&quot;...}" />
-            <marker date="1530939130861" expanded="true" signature="2021:2118" ph="{&quot;type&quot;: &quot;bucket&quot;...}" />
-            <marker date="1530939130861" expanded="true" signature="2133:2316" ph="{&quot;num_epochs&quot;: 40...}" />
-            <marker date="1530939130861" expanded="true" signature="2281:2312" ph="{&quot;type&quot;: &quot;adagrad&quot;...}" />
-          </folding>
+          <folding />
         </state>
       </provider>
     </entry>
@@ -742,10 +687,34 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/tokenizers/jieba_splitter.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="499">
+          <caret line="88" column="64" lean-forward="true" selection-start-line="88" selection-start-column="64" selection-end-line="88" selection-end-column="64" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/tokenizers/jieba_tokenizer.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="245">
+          <caret line="63" column="47" lean-forward="false" selection-start-line="63" selection-start-column="36" selection-end-line="63" selection-end-column="47" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$USER_HOME$/anaconda3/envs/pytorch0.4/lib/python3.6/site-packages/allennlp/data/tokenizers/tokenizer.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="600">
+          <caret line="43" column="8" lean-forward="false" selection-start-line="43" selection-start-column="8" selection-end-line="43" selection-end-column="8" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/models/biaowen_mingxi_classifier.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-1759">
-          <caret line="18" column="7" lean-forward="true" selection-start-line="18" selection-start-column="7" selection-end-line="18" selection-end-column="7" />
+        <state relative-caret-position="240">
+          <caret line="16" column="31" lean-forward="false" selection-start-line="16" selection-start-column="17" selection-end-line="16" selection-end-column="31" />
           <folding>
             <element signature="e#0#44#0" expanded="true" />
           </folding>
@@ -754,8 +723,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/dataset_readers/biao_wen_ming_xi.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="487">
-          <caret line="85" column="57" lean-forward="true" selection-start-line="85" selection-start-column="57" selection-end-line="85" selection-end-column="57" />
+        <state relative-caret-position="620">
+          <caret line="94" column="35" lean-forward="false" selection-start-line="94" selection-start-column="35" selection-end-line="94" selection-end-column="35" />
           <folding>
             <element signature="e#24#47#0" expanded="true" />
           </folding>
