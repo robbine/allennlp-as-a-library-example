@@ -86,7 +86,10 @@ class BiaoWenMingXiDatasetReader(DatasetReader):
         tokenized_query = self._tokenizer.tokenize(query)
         doc_field = TextField(tokenized_doc, self._token_indexers)
         query_field = TextField(tokenized_query, self._token_indexers)
-        fields = {'premise': doc_field, 'hypothesis': query_field, 'label': LabelField(label)}
+        if label is None:
+            fields = {'premise': doc_field, 'hypothesis': query_field}
+        else:
+            fields = {'premise': doc_field, 'hypothesis': query_field, 'label': LabelField(label)}
         return Instance(fields)
 
     @classmethod

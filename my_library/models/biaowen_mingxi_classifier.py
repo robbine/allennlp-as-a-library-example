@@ -168,9 +168,10 @@ class BiaowenMingxiClassifier(Model):
                        "h2p_attention": h2p_attention,
                        "p2h_attention": p2h_attention}
 
-        loss = self._loss(label_logits, label.long().view(-1))
-        self._accuracy(label_logits, label)
-        output_dict["loss"] = loss
+        if label is not None:
+            loss = self._loss(label_logits, label.long().view(-1))
+            self._accuracy(label_logits, label)
+            output_dict["loss"] = loss
 
         return output_dict
 
