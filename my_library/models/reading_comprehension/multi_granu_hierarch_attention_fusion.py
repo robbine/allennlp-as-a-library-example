@@ -2,25 +2,25 @@ import logging
 from typing import Any, Dict, List, Optional
 
 import torch
+import torch.nn as nn
 from torch.nn.functional import nll_loss
-
-from allennlp.common import Params
+import torch.nn.functional as F
 from allennlp.common.checks import check_dimensions_match
 from allennlp.data import Vocabulary
 from allennlp.models.model import Model
 from allennlp.modules import Highway
-from allennlp.modules import Seq2SeqEncoder, SimilarityFunction, TimeDistributed, TextFieldEmbedder
-from allennlp.modules.matrix_attention.legacy_matrix_attention import LegacyMatrixAttention
+from allennlp.modules import Seq2SeqEncoder, Seq2VecEncoder, SimilarityFunction, TimeDistributed, TextFieldEmbedder
 from allennlp.nn import util, InitializerApplicator, RegularizerApplicator
 from allennlp.training.metrics import BooleanAccuracy, CategoricalAccuracy, SquadEmAndF1
-from my_library.modules.layers.pointer_network import *
-from allennlp.modules.matrix_attention.matrix_attention import MatrixAttention
+from allennlp.modules.matrix_attention.bilinear_matrix_attention import BilinearMatrixAttention
+
+from my_library.modules.matrix_attention.soft_alignment_matrix_attention import SoftAlignmentMatrixAttention
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 
-@Model.register("rnet")
-class RNet(Model):
+@Model.register("multi-fusion")
+class MultiGranuFusion(Model):
 	"""
 	This class implements Minjoon Seo's `Bidirectional Attention Flow model
 	<https://www.semanticscholar.org/paper/Bidirectional-Attention-Flow-for-Machine-Seo-Kembhavi/7586b7cca1deba124af80609327395e613a20e9d>`_
@@ -43,9 +43,15 @@ class RNet(Model):
 	phrase_layer : ``Seq2SeqEncoder``
 		The encoder (with its own internal stacking) that we will use in between embedding tokens
 		and doing the bidirectional attention.
+	similarity_function : ``SimilarityFunction``
+		The similarity function that we will use when comparing encoded passage and question
+		representations.
 	modeling_layer : ``Seq2SeqEncoder``
 		The encoder (with its own internal stacking) that we will use in between the bidirectional
 		attention and predicting span start and end.
+	span_end_encoder : ``Seq2SeqEncoder``
+		The encoder that we will use to incorporate span start predictions into the passage state
+		before predicting span end.
 	dropout : ``float``, optional (default=0.2)
 		If greater than 0, we will apply dropout with this probability after all encoders (pytorch
 		LSTMs do not apply dropout to their last layer).
@@ -62,33 +68,38 @@ class RNet(Model):
 	"""
 
 	def __init__(self, vocab: Vocabulary,
-				 hidden_size: int,
-				 is_bidirectional: bool,
 				 text_field_embedder: TextFieldEmbedder,
 				 num_highway_layers: int,
 				 phrase_layer: Seq2SeqEncoder,
-				 gated_attention_layer: Seq2SeqEncoder,
-				 self_attention_layer: Seq2SeqEncoder,
+				 soft_align_matrix_attention: SoftAlignmentMatrixAttention,
+				 self_matrix_attention: BilinearMatrixAttention,
+				 passage_modeling_layer: Seq2SeqEncoder,
+				 question_modeling_layer: Seq2SeqEncoder,
+				 question_encoding_layer: Seq2VecEncoder,
 				 dropout: float = 0.2,
 				 mask_lstms: bool = True,
 				 initializer: InitializerApplicator = InitializerApplicator(),
 				 regularizer: Optional[RegularizerApplicator] = None) -> None:
-		super(RNet, self).__init__(vocab, regularizer)
+		super(MultiGranuFusion, self).__init__(vocab, regularizer)
 
-		self.hidden_size = hidden_size
-		self.is_bidirectional = is_bidirectional
 		self._text_field_embedder = text_field_embedder
 		self._highway_layer = TimeDistributed(Highway(text_field_embedder.get_output_dim(),
 													  num_highway_layers))
 		self._phrase_layer = phrase_layer
-		self._gated_attention_layer = gated_attention_layer
-		self._self_attention_layer = self_attention_layer
+		self._matrix_attention = soft_align_matrix_attention
+		self._self_matrix_attention = self_matrix_attention
+		self._passage_modeling_layer = passage_modeling_layer
+		self._question_modeling_layer = question_modeling_layer
+		self._question_encoding_layer = question_encoding_layer
+		passage_modeling_output_dim = self._passage_modeling_layer.get_output_dim()
+		question_modeling_output_dim = self._question_modeling_layer.get_output_dim()
 
 		encoding_dim = phrase_layer.get_output_dim()
-		gated_attention_dim = gated_attention_layer.get_output_dim()
-		self_attention_dim = self_attention_layer.get_output_dim()
+		self._fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
+		self._gating_weight = nn.Linear(encoding_dim * 2, 1)
+		self._span_start_weight = nn.Linear(passage_modeling_output_dim, question_modeling_output_dim)
+		self._span_end_weight = nn.Linear(passage_modeling_output_dim, question_modeling_output_dim)
 
-		self._pointer_network = PointerNet(self_attention_dim, self.hidden_size, encoding_dim, self.is_bidirectional)
 		self._span_start_accuracy = CategoricalAccuracy()
 		self._span_end_accuracy = CategoricalAccuracy()
 		self._span_accuracy = BooleanAccuracy()
@@ -170,34 +181,53 @@ class RNet(Model):
 		encoded_passage = self._dropout(self._phrase_layer(embedded_passage, passage_lstm_mask))
 		encoding_dim = encoded_question.size(-1)
 
+		# Shape: (batch_size, passage_length, question_length)
+		passage_question_similarity = self._matrix_attention(encoded_passage, encoded_question)
+		# Shape: (batch_size, passage_length, question_length)
+		passage_question_attention = util.masked_softmax(passage_question_similarity, question_mask, dim=-1)
+		# Shape: (batch_size, passage_length, encoding_dim)
+		passage_question_vectors = util.weighted_sum(encoded_question, passage_question_attention)
 
-		self._gated_attention_layer.transform_match_input(encoded_question)
-		hidden = torch.zeros(1, batch_size, self._gated_attention_layer.get_output_dim())
-		gated_output_arr = []
-		for seq_idx in range(passage_length):
-			output, hidden = self._gated_attention_layer(encoded_passage[:, seq_idx, :].unsqueeze(0), hidden)
-			gated_output_arr.append(output)
-		gated_passage = torch.cat(gated_output_arr, dim=0)
+		# Shape: (batch_size, passage_length)
+		question_passage_similarity = torch.transpose(passage_question_similarity, 1, 2)
+		# Shape: (batch_size, passage_length)
+		question_passage_attention = util.masked_softmax(question_passage_similarity, passage_mask, dim=-1)
+		# Shape: (batch_size, question_length, encoding_dim)
+		question_passage_vector = util.weighted_sum(encoded_passage, question_passage_attention)
 
-		if self._self_attention_layer.is_bidirectional:
-			hidden = torch.zeros(2, batch_size, self._self_attention_layer.get_output_dim()//2)
-		else:
-			hidden = torch.zeros(1, batch_size, self._self_attention_layer.get_output_dim())
-		output, hidden = self._self_attention_layer(gated_passage, hidden)
-		modeled_passage = output
+		def _fusion_function(input, fusion):
+			concat_inputs = torch.cat((input, fusion, input * fusion, input - fusion), dim=-1)
+			return F.tanh(self._fusion_weight(concat_inputs))
+
+		def _gating_function(input, fusion):
+			concat_inputs = torch.cat((input, fusion), dim=-1)
+			return F.sigmoid(self._gating_weight(concat_inputs))
+
+		passage_gate = _gating_function(encoded_passage, passage_question_vectors)
+		gated_passage = passage_gate * _fusion_function(encoded_passage, passage_question_vectors) + (1-passage_gate) * encoded_passage
+		question_gate = _gating_function(encoded_question, question_passage_vector)
+		gated_question = question_gate * _fusion_function(encoded_question, question_passage_vector) + (1 - question_gate) * encoded_question
+
+		passage_passage_similarity = self._self_matrix_attention(gated_passage, gated_passage)
+		passage_passage_attention = util.masked_softmax(passage_passage_similarity, passage_mask, dim=-1)
+		passage_passage_vector = util.weighted_sum(gated_passage, passage_passage_attention)
+		final_passage = _fusion_function(gated_passage, passage_passage_vector)
+
+		modeled_passage = self._dropout(self._passage_modeling_layer(final_passage, passage_lstm_mask))
 		modeling_dim = modeled_passage.size(-1)
 
-		hidden = self._pointer_network.build_attention(encoded_question)
-		span_start_logits, span_end_logits = self._pointer_network(modeled_passage, hidden)
-		span_start_logits = span_start_logits.squeeze(2).t()
+		modeled_question = self._question_modeling_layer(gated_question, question_lstm_mask)
+		question_vector = self._question_encoding_layer(modeled_question, question_lstm_mask).unsqueeze(-1)
+		span_start_logits = torch.bmm(self._span_start_weight(modeled_passage), question_vector).squeeze(-1)
+		span_end_logits = torch.bmm(self._span_end_weight(modeled_passage), question_vector).squeeze(-1)
 		span_start_probs = util.masked_softmax(span_start_logits, passage_mask)
-		span_end_logits = span_end_logits.squeeze(2).t()
 		span_end_probs = util.masked_softmax(span_end_logits, passage_mask)
 		span_start_logits = util.replace_masked_values(span_start_logits, passage_mask, -1e7)
 		span_end_logits = util.replace_masked_values(span_end_logits, passage_mask, -1e7)
 		best_span = self.get_best_span(span_start_logits, span_end_logits)
 
 		output_dict = {
+			"passage_question_attention": passage_question_attention,
 			"span_start_logits": span_start_logits,
 			"span_start_probs": span_start_probs,
 			"span_end_logits": span_end_logits,
@@ -272,4 +302,3 @@ class RNet(Model):
 					best_word_span[b, 1] = j
 					max_span_log_prob[b] = val1 + val2
 		return best_word_span
-

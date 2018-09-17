@@ -1,0 +1,1 @@
+from my_library.modules.seq2vec_encoders.weighted_boe_encoder import WeightedBagOfEmbeddingsEncoder

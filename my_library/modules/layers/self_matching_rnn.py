@@ -12,7 +12,7 @@ class SelfMatchAttentionRNN(Seq2SeqEncoder):
         return self.is_bidirectional
 
     def get_output_dim(self) -> int:
-        return self.hidden_size * 2 if self.is_bidirectional else self.hidden_size
+        return self.hidden_size
 
     def __init__(self, input_size, hidden_size, is_bidirectional):
         super(SelfMatchAttentionRNN, self).__init__()
@@ -24,7 +24,7 @@ class SelfMatchAttentionRNN(Seq2SeqEncoder):
         self.weight_V = nn.Linear(hidden_size, 1)
         self.weight_W = nn.Linear(input_size + input_size, input_size + input_size)
         self.softmax = F.softmax
-        self.gru = nn.GRU(input_size=input_size+input_size, hidden_size=hidden_size, bidirectional=self.is_bidirectional)
+        self.gru = nn.GRU(input_size=input_size+input_size, hidden_size=hidden_size//2 if is_bidirectional else hidden_size, bidirectional=self.is_bidirectional)
 
     def forward(self, input, hidden):
         weight_sum = self.weight_UQ(input) + self.weight_UP(input)

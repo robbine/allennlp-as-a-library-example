@@ -1,0 +1,1 @@
+from my_library.modules.matrix_attention.soft_alignment_matrix_attention import SoftAlignmentMatrixAttention
