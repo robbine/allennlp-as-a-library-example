@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional
 import torch
 import torch.nn as nn
 from torch.nn.functional import nll_loss
-import torch.nn.functional as F
 from allennlp.common.checks import check_dimensions_match
 from allennlp.data import Vocabulary
 from allennlp.models.model import Model
@@ -197,11 +196,11 @@ class MultiGranuFusion(Model):
 
 		def _fusion_function(input, fusion):
 			concat_inputs = torch.cat((input, fusion, input * fusion, input - fusion), dim=-1)
-			return F.tanh(self._fusion_weight(concat_inputs))
+			return torch.tanh(self._fusion_weight(concat_inputs))
 
 		def _gating_function(input, fusion):
 			concat_inputs = torch.cat((input, fusion), dim=-1)
-			return F.sigmoid(self._gating_weight(concat_inputs))
+			return torch.sigmoid(self._gating_weight(concat_inputs))
 
 		passage_gate = _gating_function(encoded_passage, passage_question_vectors)
 		gated_passage = passage_gate * _fusion_function(encoded_passage, passage_question_vectors) + (1-passage_gate) * encoded_passage
