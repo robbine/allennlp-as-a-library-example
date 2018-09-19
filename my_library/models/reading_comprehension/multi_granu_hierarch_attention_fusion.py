@@ -111,6 +111,14 @@ class MultiGranuFusion(Model):
 
 		initializer(self)
 
+	def _fusion_function(self, input, fusion):
+		concat_inputs = torch.cat((input, fusion, input * fusion, input - fusion), dim=-1)
+		return torch.tanh(self._fusion_weight(concat_inputs))
+
+	def _gating_function(self, input, fusion):
+		concat_inputs = torch.cat((input, fusion), dim=-1)
+		return torch.sigmoid(self._gating_weight(concat_inputs))
+
 	def forward(self,  # type: ignore
 				question: Dict[str, torch.LongTensor],
 				passage: Dict[str, torch.LongTensor],
@@ -194,23 +202,15 @@ class MultiGranuFusion(Model):
 		# Shape: (batch_size, question_length, encoding_dim)
 		question_passage_vector = util.weighted_sum(encoded_passage, question_passage_attention)
 
-		def _fusion_function(input, fusion):
-			concat_inputs = torch.cat((input, fusion, input * fusion, input - fusion), dim=-1)
-			return torch.tanh(self._fusion_weight(concat_inputs))
-
-		def _gating_function(input, fusion):
-			concat_inputs = torch.cat((input, fusion), dim=-1)
-			return torch.sigmoid(self._gating_weight(concat_inputs))
-
-		passage_gate = _gating_function(encoded_passage, passage_question_vectors)
-		gated_passage = passage_gate * _fusion_function(encoded_passage, passage_question_vectors) + (1-passage_gate) * encoded_passage
-		question_gate = _gating_function(encoded_question, question_passage_vector)
-		gated_question = question_gate * _fusion_function(encoded_question, question_passage_vector) + (1 - question_gate) * encoded_question
+		passage_gate = self._gating_function(encoded_passage, passage_question_vectors)
+		gated_passage = passage_gate * self._fusion_function(encoded_passage, passage_question_vectors) + (1-passage_gate) * encoded_passage
+		question_gate = self._gating_function(encoded_question, question_passage_vector)
+		gated_question = question_gate * self._fusion_function(encoded_question, question_passage_vector) + (1 - question_gate) * encoded_question
 
 		passage_passage_similarity = self._self_matrix_attention(gated_passage, gated_passage)
 		passage_passage_attention = util.masked_softmax(passage_passage_similarity, passage_mask, dim=-1)
 		passage_passage_vector = util.weighted_sum(gated_passage, passage_passage_attention)
-		final_passage = _fusion_function(gated_passage, passage_passage_vector)
+		final_passage = self._fusion_function(gated_passage, passage_passage_vector)
 
 		modeled_passage = self._dropout(self._passage_modeling_layer(final_passage, passage_lstm_mask))
 		modeling_dim = modeled_passage.size(-1)
