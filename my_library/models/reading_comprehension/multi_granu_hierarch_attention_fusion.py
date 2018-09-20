@@ -75,6 +75,8 @@ class MultiGranuFusion(Model):
 				 passage_modeling_layer: Seq2SeqEncoder,
 				 question_modeling_layer: Seq2SeqEncoder,
 				 question_encoding_layer: Seq2VecEncoder,
+				 passage_similarity_function: SimilarityFunction,
+				 question_similarity_function: SimilarityFunction,
 				 dropout: float = 0.2,
 				 mask_lstms: bool = True,
 				 initializer: InitializerApplicator = InitializerApplicator(),
@@ -90,6 +92,9 @@ class MultiGranuFusion(Model):
 		self._passage_modeling_layer = passage_modeling_layer
 		self._question_modeling_layer = question_modeling_layer
 		self._question_encoding_layer = question_encoding_layer
+		self._passage_similarity_function = passage_similarity_function
+		self._question_similarity_function = question_similarity_function
+
 		passage_modeling_output_dim = self._passage_modeling_layer.get_output_dim()
 		question_modeling_output_dim = self._question_modeling_layer.get_output_dim()
 
@@ -203,9 +208,11 @@ class MultiGranuFusion(Model):
 		question_passage_vector = util.weighted_sum(encoded_passage, question_passage_attention)
 
 		passage_gate = self._gating_function(encoded_passage, passage_question_vectors)
-		gated_passage = passage_gate * self._fusion_function(encoded_passage, passage_question_vectors) + (1-passage_gate) * encoded_passage
+		passage_fusion = torch.unsqueeze(self._passage_similarity_function(encoded_passage, passage_question_vectors), -1)
+		gated_passage = passage_gate * passage_fusion + (1-passage_gate) * encoded_passage
 		question_gate = self._gating_function(encoded_question, question_passage_vector)
-		gated_question = question_gate * self._fusion_function(encoded_question, question_passage_vector) + (1 - question_gate) * encoded_question
+		question_fusion = torch.unsqueeze(self._question_similarity_function(encoded_question, question_passage_vector), -1)
+		gated_question = question_gate * question_fusion + (1 - question_gate) * encoded_question
 
 		passage_passage_similarity = self._self_matrix_attention(gated_passage, gated_passage)
 		passage_passage_attention = util.masked_softmax(passage_passage_similarity, passage_mask, dim=-1)
