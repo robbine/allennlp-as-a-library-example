@@ -99,8 +99,9 @@ class MultiGranuFusion(Model):
 		question_modeling_output_dim = self._question_modeling_layer.get_output_dim()
 
 		encoding_dim = phrase_layer.get_output_dim()
+		self._passage_fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
+		self._question_fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
 		self._fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
-		self._gating_weight = nn.Linear(encoding_dim * 2, 1)
 		self._span_start_weight = nn.Linear(passage_modeling_output_dim, question_modeling_output_dim)
 		self._span_end_weight = nn.Linear(passage_modeling_output_dim, question_modeling_output_dim)
 
@@ -116,13 +117,17 @@ class MultiGranuFusion(Model):
 
 		initializer(self)
 
+	def _passage_fusion_function(self, input, fusion):
+		concat_inputs = torch.cat((input, fusion, input * fusion, input - fusion), dim=-1)
+		return torch.tanh(self._passage_fusion_weight(concat_inputs))
+
+	def _question_fusion_function(self, input, fusion):
+		concat_inputs = torch.cat((input, fusion, input * fusion, input - fusion), dim=-1)
+		return torch.tanh(self._question_fusion_weight(concat_inputs))
+
 	def _fusion_function(self, input, fusion):
 		concat_inputs = torch.cat((input, fusion, input * fusion, input - fusion), dim=-1)
 		return torch.tanh(self._fusion_weight(concat_inputs))
-
-	def _gating_function(self, input, fusion):
-		concat_inputs = torch.cat((input, fusion), dim=-1)
-		return torch.sigmoid(self._gating_weight(concat_inputs))
 
 	def forward(self,  # type: ignore
 				question: Dict[str, torch.LongTensor],
@@ -207,11 +212,11 @@ class MultiGranuFusion(Model):
 		# Shape: (batch_size, question_length, encoding_dim)
 		question_passage_vector = util.weighted_sum(encoded_passage, question_passage_attention)
 
-		passage_gate = self._gating_function(encoded_passage, passage_question_vectors)
-		passage_fusion = torch.unsqueeze(self._passage_similarity_function(encoded_passage, passage_question_vectors), -1)
-		gated_passage = passage_gate * passage_fusion + (1-passage_gate) * encoded_passage
-		question_gate = self._gating_function(encoded_question, question_passage_vector)
-		question_fusion = torch.unsqueeze(self._question_similarity_function(encoded_question, question_passage_vector), -1)
+		passage_gate = torch.unsqueeze(self._passage_similarity_function(encoded_passage, passage_question_vectors), -1)
+		passage_fusion = self._passage_fusion_function(encoded_passage, passage_question_vectors)
+		gated_passage = passage_gate * passage_fusion + (1 - passage_gate) * encoded_passage
+		question_gate = torch.unsqueeze(self._question_similarity_function(encoded_question, question_passage_vector), -1)
+		question_fusion = self._question_fusion_function(encoded_question, question_passage_vector)
 		gated_question = question_gate * question_fusion + (1 - question_gate) * encoded_question
 
 		passage_passage_similarity = self._self_matrix_attention(gated_passage, gated_passage)
