@@ -267,9 +267,11 @@ class MultiGranuFusion(Model):
 
 		# Compute the loss for training.
 		if span_start is not None:
+			device_id = util.get_device_of(span_start)
+			weight = self._span_weight.cuda(device_id) if device_id >= 0 else self._span_weight
 			arange_mask = util.get_range_vector(passage_length, util.get_device_of(span_start))
 			span_mask = (arange_mask >= span_start) & (arange_mask <= span_end)
-			span_loss = nll_loss(self._masked_log_softmax(span_logits, passage_mask).transpose(1,2), span_mask.long(), weight=self._span_weight)
+			span_loss = nll_loss(self._masked_log_softmax(span_logits, passage_mask).transpose(1,2), span_mask.long(), weight=weight)
 			loss = nll_loss(util.masked_log_softmax(span_start_logits, passage_mask), span_start.squeeze(-1))
 			self._span_start_accuracy(span_start_logits, span_start.squeeze(-1))
 			loss += nll_loss(util.masked_log_softmax(span_end_logits, passage_mask), span_end.squeeze(-1))
