@@ -104,6 +104,9 @@ class MultiGranuFusion(Model):
 		self._fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
 		self._span_start_weight = nn.Linear(passage_modeling_output_dim, question_modeling_output_dim)
 		self._span_end_weight = nn.Linear(passage_modeling_output_dim, question_modeling_output_dim)
+		self._span_weight = torch.FloatTensor([0.1, 1])
+
+		self._span_predictor = TimeDistributed(torch.nn.Linear(encoding_dim, 2))
 
 		self._span_start_accuracy = CategoricalAccuracy()
 		self._span_end_accuracy = CategoricalAccuracy()
@@ -128,6 +131,19 @@ class MultiGranuFusion(Model):
 	def _fusion_function(self, input, fusion):
 		concat_inputs = torch.cat((input, fusion, input * fusion, input - fusion), dim=-1)
 		return torch.tanh(self._fusion_weight(concat_inputs))
+
+	def _masked_log_softmax(self, vector, mask, dim: int = -1):
+		if mask is not None:
+			mask = mask.float()
+			while mask.dim() < vector.dim():
+				mask = mask.unsqueeze(-1)
+			# vector + mask.log() is an easy way to zero out masked elements in logspace, but it
+			# results in nans when the whole vector is masked.  We need a very small value instead of a
+			# zero in the mask for these cases.  log(1 + 1e-45) is still basically 0, so we can safely
+			# just add 1e-45 before calling mask.log().  We use 1e-45 because 1e-46 is so small it
+			# becomes 0 - this is just the smallest value we can actually use.
+			vector = vector + (mask + 1e-45).log()
+		return torch.nn.functional.log_softmax(vector, dim=dim)
 
 	def forward(self,  # type: ignore
 				question: Dict[str, torch.LongTensor],
@@ -215,6 +231,7 @@ class MultiGranuFusion(Model):
 		passage_gate = torch.unsqueeze(self._passage_similarity_function(encoded_passage, passage_question_vectors), -1)
 		passage_fusion = self._passage_fusion_function(encoded_passage, passage_question_vectors)
 		gated_passage = passage_gate * passage_fusion + (1 - passage_gate) * encoded_passage
+
 		question_gate = torch.unsqueeze(self._question_similarity_function(encoded_question, question_passage_vector), -1)
 		question_fusion = self._question_fusion_function(encoded_question, question_passage_vector)
 		gated_question = question_gate * question_fusion + (1 - question_gate) * encoded_question
@@ -226,6 +243,8 @@ class MultiGranuFusion(Model):
 
 		modeled_passage = self._dropout(self._passage_modeling_layer(final_passage, passage_lstm_mask))
 		modeling_dim = modeled_passage.size(-1)
+
+		span_logits = self._span_predictor(modeled_passage)
 
 		modeled_question = self._question_modeling_layer(gated_question, question_lstm_mask)
 		question_vector = self._question_encoding_layer(modeled_question, question_lstm_mask).unsqueeze(-1)
@@ -248,12 +267,15 @@ class MultiGranuFusion(Model):
 
 		# Compute the loss for training.
 		if span_start is not None:
+			arange_mask = torch.arange(0, passage_length).long()
+			span_mask = (arange_mask >= span_start) & (arange_mask <= span_end)
+			span_loss = nll_loss(self._masked_log_softmax(span_logits, passage_mask).transpose(1,2), span_mask.long(), weight=self._span_weight)
 			loss = nll_loss(util.masked_log_softmax(span_start_logits, passage_mask), span_start.squeeze(-1))
 			self._span_start_accuracy(span_start_logits, span_start.squeeze(-1))
 			loss += nll_loss(util.masked_log_softmax(span_end_logits, passage_mask), span_end.squeeze(-1))
 			self._span_end_accuracy(span_end_logits, span_end.squeeze(-1))
 			self._span_accuracy(best_span, torch.stack([span_start, span_end], -1))
-			output_dict["loss"] = loss
+			output_dict["loss"] = loss + span_loss/2
 
 		# Compute the EM and F1 on SQuAD and add the tokenized input to the output.
 		if metadata is not None:
