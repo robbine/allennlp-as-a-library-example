@@ -267,7 +267,7 @@ class MultiGranuFusion(Model):
 
 		# Compute the loss for training.
 		if span_start is not None:
-			arange_mask = torch.arange(0, passage_length).long()
+			arange_mask = util.get_range_vector(passage_length, util.get_device_of(span_start))
 			span_mask = (arange_mask >= span_start) & (arange_mask <= span_end)
 			span_loss = nll_loss(self._masked_log_softmax(span_logits, passage_mask).transpose(1,2), span_mask.long(), weight=self._span_weight)
 			loss = nll_loss(util.masked_log_softmax(span_start_logits, passage_mask), span_start.squeeze(-1))
