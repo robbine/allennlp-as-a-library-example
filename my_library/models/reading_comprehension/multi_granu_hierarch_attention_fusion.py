@@ -77,6 +77,7 @@ class MultiGranuFusion(Model):
 				 question_encoding_layer: Seq2VecEncoder,
 				 passage_similarity_function: SimilarityFunction,
 				 question_similarity_function: SimilarityFunction,
+				 multi_head_layer: Seq2SeqEncoder,
 				 dropout: float = 0.2,
 				 mask_lstms: bool = True,
 				 initializer: InitializerApplicator = InitializerApplicator(),
@@ -94,6 +95,7 @@ class MultiGranuFusion(Model):
 		self._question_encoding_layer = question_encoding_layer
 		self._passage_similarity_function = passage_similarity_function
 		self._question_similarity_function = question_similarity_function
+		self._multi_head_layer = multi_head_layer
 
 		passage_modeling_output_dim = self._passage_modeling_layer.get_output_dim()
 		question_modeling_output_dim = self._question_modeling_layer.get_output_dim()
@@ -236,10 +238,11 @@ class MultiGranuFusion(Model):
 		question_fusion = self._question_fusion_function(encoded_question, question_passage_vector)
 		gated_question = question_gate * question_fusion + (1 - question_gate) * encoded_question
 
-		passage_passage_similarity = self._self_matrix_attention(gated_passage, gated_passage)
-		passage_passage_attention = util.masked_softmax(passage_passage_similarity, passage_mask, dim=-1)
-		passage_passage_vector = util.weighted_sum(gated_passage, passage_passage_attention)
-		final_passage = self._fusion_function(gated_passage, passage_passage_vector)
+		# passage_passage_similarity = self._self_matrix_attention(gated_passage, gated_passage)
+		# passage_passage_attention = util.masked_softmax(passage_passage_similarity, passage_mask, dim=-1)
+		# passage_passage_vector = util.weighted_sum(gated_passage, passage_passage_attention)
+		# final_passage = self._fusion_function(gated_passage, passage_passage_vector)
+		final_passage = self._multi_head_layer(gated_passage, passage_mask)
 
 		modeled_passage = self._dropout(self._passage_modeling_layer(final_passage, passage_lstm_mask))
 		modeling_dim = modeled_passage.size(-1)

@@ -95,6 +95,15 @@
       "tensor_2_dim": 200,
       "activation": "sigmoid"
     },
+    "multi_head_layer": {
+      "type": "stacked_self_attention",
+      "input_dim": 200,
+      "hidden_dim": 200,
+      "projection_dim": 200,
+      "feedforward_hidden_dim": 200,
+      "num_layers": 3,
+      "num_attention_heads": 5
+    },
     "dropout": 0.2
   },
   "iterator": {
