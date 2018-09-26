@@ -203,8 +203,8 @@ class MultiGranuFusionElmo(Model):
 		"""
 		# embedded_question = self._highway_layer(self._text_field_embedder(question))
 		# embedded_passage = self._highway_layer(self._text_field_embedder(passage))
-		embedded_question = self._text_field_embedder(question)
-		embedded_passage = self._text_field_embedder(passage)
+		embedded_question = self._text_field_embedder(question).long()
+		embedded_passage = self._text_field_embedder(passage).long()
 		batch_size = embedded_question.size(0)
 		passage_length = embedded_passage.size(1)
 		question_mask = util.get_text_field_mask(question).float()
