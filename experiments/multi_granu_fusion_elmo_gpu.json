@@ -53,28 +53,27 @@
       }
     },
     "elmo_layer": {
-      "type": "alternating_lstm",
+      "type": "alternating_highway_lstm_cuda",
       "input_size": 1224,
-      "hidden_size": 300,
+      "hidden_size": 200,
       "num_layers": 4,
-      "recurrent_dropout_probability": 0.1,
-      "use_highway": true
+      "recurrent_dropout_probability": 0.1
     },
     "num_highway_layers": 2,
     "soft_align_matrix_attention": {
-      "input_dim": 300,
-      "hidden_dim": 300,
+      "input_dim": 200,
+      "hidden_dim": 200,
       "activation": "relu"
     },
     "self_matrix_attention": {
-      "matrix_1_dim": 300,
-      "matrix_2_dim": 300,
+      "matrix_1_dim": 200,
+      "matrix_2_dim": 200,
       "activation": "relu"
     },
     "passage_modeling_layer": {
       "type": "lstm",
       "bidirectional": true,
-      "input_size": 300,
+      "input_size": 200,
       "hidden_size": 100,
       "num_layers": 2,
       "dropout": 0.2
@@ -82,7 +81,7 @@
     "question_modeling_layer": {
       "type": "lstm",
       "bidirectional": true,
-      "input_size": 300,
+      "input_size": 200,
       "hidden_size": 100,
       "num_layers": 2,
       "dropout": 0.2
@@ -94,15 +93,15 @@
     "passage_similarity_function": {
       "type": "linear",
       "combination": "x,y,x*y,x-y",
-      "tensor_1_dim": 300,
-      "tensor_2_dim": 300,
+      "tensor_1_dim": 200,
+      "tensor_2_dim": 200,
       "activation": "sigmoid"
     },
     "question_similarity_function": {
       "type": "linear",
       "combination": "x,y,x*y,x-y",
-      "tensor_1_dim": 300,
-      "tensor_2_dim": 300,
+      "tensor_1_dim": 200,
+      "tensor_2_dim": 200,
       "activation": "sigmoid"
     },
     "dropout": 0.2
