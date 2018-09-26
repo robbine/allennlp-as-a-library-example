@@ -18,8 +18,8 @@ from my_library.modules.matrix_attention.soft_alignment_matrix_attention import 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 
-@Model.register("multi-fusion")
-class MultiGranuFusion(Model):
+@Model.register("multi-fusion-elmo")
+class MultiGranuFusionElmo(Model):
 	"""
 	This class implements Minjoon Seo's `Bidirectional Attention Flow model
 	<https://www.semanticscholar.org/paper/Bidirectional-Attention-Flow-for-Machine-Seo-Kembhavi/7586b7cca1deba124af80609327395e613a20e9d>`_
@@ -69,7 +69,7 @@ class MultiGranuFusion(Model):
 	def __init__(self, vocab: Vocabulary,
 				 text_field_embedder: TextFieldEmbedder,
 				 num_highway_layers: int,
-				 phrase_layer: Seq2SeqEncoder,
+				 elmo_layer: Seq2SeqEncoder,
 				 soft_align_matrix_attention: SoftAlignmentMatrixAttention,
 				 self_matrix_attention: BilinearMatrixAttention,
 				 passage_modeling_layer: Seq2SeqEncoder,
@@ -81,12 +81,12 @@ class MultiGranuFusion(Model):
 				 mask_lstms: bool = True,
 				 initializer: InitializerApplicator = InitializerApplicator(),
 				 regularizer: Optional[RegularizerApplicator] = None) -> None:
-		super(MultiGranuFusion, self).__init__(vocab, regularizer)
+		super(MultiGranuFusionElmo, self).__init__(vocab, regularizer)
 
 		self._text_field_embedder = text_field_embedder
-		self._highway_layer = TimeDistributed(Highway(text_field_embedder.get_output_dim(),
-													  num_highway_layers))
-		self._phrase_layer = phrase_layer
+		# self._highway_layer = TimeDistributed(Highway(text_field_embedder.get_output_dim(),
+		# 											  num_highway_layers))
+		self._elmo_layer = elmo_layer
 		self._matrix_attention = soft_align_matrix_attention
 		self._self_matrix_attention = self_matrix_attention
 		self._passage_modeling_layer = passage_modeling_layer
@@ -98,7 +98,7 @@ class MultiGranuFusion(Model):
 		passage_modeling_output_dim = self._passage_modeling_layer.get_output_dim()
 		question_modeling_output_dim = self._question_modeling_layer.get_output_dim()
 
-		encoding_dim = phrase_layer.get_output_dim()
+		encoding_dim = elmo_layer.get_output_dim()
 		self._passage_fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
 		self._question_fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
 		self._fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
@@ -201,8 +201,10 @@ class MultiGranuFusion(Model):
 			string from the original passage that the model thinks is the best answer to the
 			question.
 		"""
-		embedded_question = self._highway_layer(self._text_field_embedder(question))
-		embedded_passage = self._highway_layer(self._text_field_embedder(passage))
+		# embedded_question = self._highway_layer(self._text_field_embedder(question))
+		# embedded_passage = self._highway_layer(self._text_field_embedder(passage))
+		embedded_question = self._text_field_embedder(question)
+		embedded_passage = self._text_field_embedder(passage)
 		batch_size = embedded_question.size(0)
 		passage_length = embedded_passage.size(1)
 		question_mask = util.get_text_field_mask(question).float()
@@ -210,8 +212,10 @@ class MultiGranuFusion(Model):
 		question_lstm_mask = question_mask if self._mask_lstms else None
 		passage_lstm_mask = passage_mask if self._mask_lstms else None
 
-		encoded_question = self._dropout(self._phrase_layer(embedded_question, question_lstm_mask))
-		encoded_passage = self._dropout(self._phrase_layer(embedded_passage, passage_lstm_mask))
+		# encoded_question = self._dropout(self._phrase_layer(embedded_question, question_lstm_mask))
+		# encoded_passage = self._dropout(self._phrase_layer(embedded_passage, passage_lstm_mask))
+		encoded_question = self._dropout(self._elmo_layer(embedded_question, question_lstm_mask))
+		encoded_passage = self._dropout(self._elmo_layer(embedded_passage, passage_lstm_mask))
 		encoding_dim = encoded_question.size(-1)
 
 		# Shape: (batch_size, passage_length, question_length)
