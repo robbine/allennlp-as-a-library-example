@@ -53,10 +53,10 @@
       }
     },
     "elmo_layer": {
-      "type": "alternating_lstm",
+      "type": "alternating_lstm_cuda",
       "input_size": 1224,
       "hidden_size": 300,
-      "num_layers": 8,
+      "num_layers": 4,
       "recurrent_dropout_probability": 0.1,
       "use_highway": true
     },
