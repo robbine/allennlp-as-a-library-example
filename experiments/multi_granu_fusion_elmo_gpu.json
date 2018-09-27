@@ -10,7 +10,7 @@
   "train_data_path": "https://s3-us-west-2.amazonaws.com/allennlp/datasets/squad/squad-dev-v1.1.json",
   "validation_data_path": "https://s3-us-west-2.amazonaws.com/allennlp/datasets/squad/squad-dev-v1.1.json",
   "model": {
-    "type": "multi-fusion-elmo",
+    "type": "multi-fusion",
     "text_field_embedder": {
       "elmo": {
         "type": "elmo_token_embedder",
