@@ -7,7 +7,7 @@
       }
     }
   },
-  "train_data_path": "https://s3-us-west-2.amazonaws.com/allennlp/datasets/squad/squad-dev-v1.1.json",
+  "train_data_path": "https://s3-us-west-2.amazonaws.com/allennlp/datasets/squad/squad-train-v1.1.json",
   "validation_data_path": "https://s3-us-west-2.amazonaws.com/allennlp/datasets/squad/squad-dev-v1.1.json",
   "model": {
     "type": "multi-fusion-elmo",
@@ -21,7 +21,7 @@
       }
     },
     "phrase_layer": {
-      "type": "alternating_highway_lstm_cuda",
+      "type": "alternating_lstm",
       "input_size": 256,
       "hidden_size": 200,
       "num_layers": 8,
