@@ -2,20 +2,8 @@
   "dataset_reader": {
     "type": "squad",
     "token_indexers": {
-      "tokens": {
-        "type": "single_id",
-        "lowercase_tokens": true
-      },
       "elmo": {
         "type": "elmo_characters"
-      },
-      "token_characters": {
-        "type": "characters",
-        "character_tokenizer": {
-          "byte_encoding": "utf-8",
-          "start_tokens": [259],
-          "end_tokens": [260]
-        }
       }
     }
   },
