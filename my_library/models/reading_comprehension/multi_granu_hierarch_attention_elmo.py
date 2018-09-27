@@ -12,6 +12,8 @@ from allennlp.modules import Seq2SeqEncoder, Seq2VecEncoder, SimilarityFunction,
 from allennlp.nn import util, InitializerApplicator, RegularizerApplicator
 from allennlp.training.metrics import BooleanAccuracy, CategoricalAccuracy, SquadEmAndF1
 from allennlp.modules.matrix_attention.bilinear_matrix_attention import BilinearMatrixAttention
+from allennlp.modules.seq2seq_encoders import _Seq2SeqWrapper
+from allennlp.modules.alternating_highway_lstm import AlternatingHighwayLSTM
 
 from my_library.modules.matrix_attention.soft_alignment_matrix_attention import SoftAlignmentMatrixAttention
 
@@ -87,6 +89,7 @@ class MultiGranuFusionElmo(Model):
 		# self._highway_layer = TimeDistributed(Highway(text_field_embedder.get_output_dim(),
 		# 											  num_highway_layers))
 		self._elmo_layer = elmo_layer
+		self._elmo_layer = _Seq2SeqWrapper(AlternatingHighwayLSTM)(input_size=1224, hidden_size=200)
 		self._matrix_attention = soft_align_matrix_attention
 		self._self_matrix_attention = self_matrix_attention
 		self._passage_modeling_layer = passage_modeling_layer
