@@ -56,8 +56,7 @@
       "type": "alternating_highway_lstm_cuda",
       "input_size": 1224,
       "hidden_size": 200,
-      "num_layers": 4,
-      "recurrent_dropout_probability": 0.5
+      "num_layers": 4
     },
     "num_highway_layers": 2,
     "soft_align_matrix_attention": {

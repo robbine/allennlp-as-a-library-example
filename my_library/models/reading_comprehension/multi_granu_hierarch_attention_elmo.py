@@ -99,8 +99,6 @@ class MultiGranuFusionElmo(Model):
 		question_modeling_output_dim = self._question_modeling_layer.get_output_dim()
 
 		encoding_dim = elmo_layer.get_output_dim()
-		print('------>')
-		print(elmo_layer.recurrent_dropout_probability)
 		self._passage_fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
 		self._question_fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
 		self._fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
