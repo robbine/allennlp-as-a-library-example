@@ -21,7 +21,7 @@
       }
     },
     "phrase_layer": {
-      "type": "alternating_lstm",
+      "type": "alternating_highway_lstm_cuda",
       "input_size": 256,
       "hidden_size": 200,
       "num_layers": 8,
