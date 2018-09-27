@@ -21,13 +21,20 @@
       }
     },
     "phrase_layer": {
-      "type": "lstm",
-      "bidirectional": true,
+      "type": "alternating_lstm",
       "input_size": 256,
-      "hidden_size": 100,
-      "num_layers": 1,
-      "dropout": 0.2
+      "hidden_size": 200,
+      "num_layers": 8,
+      "recurrent_dropout_probability": 0.1
     },
+//    "phrase_layer": {
+//      "type": "lstm",
+//      "bidirectional": true,
+//      "input_size": 256,
+//      "hidden_size": 100,
+//      "num_layers": 1,
+//      "dropout": 0.2
+//    },
     "num_highway_layers": 2,
     "soft_align_matrix_attention": {
       "input_dim": 200,
