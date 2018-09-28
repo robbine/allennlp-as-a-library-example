@@ -21,12 +21,12 @@
       }
     },
     "phrase_layer": {
-      "type": "alternating_lstm",
+      "type": "lstm",
+      "bidirectional": true,
       "input_size": 256,
-      "hidden_size": 200,
-      "num_layers": 4,
-      "recurrent_dropout_probability": 0.1,
-      "use_highway": true
+      "hidden_size": 100,
+      "num_layers": 1,
+      "dropout": 0.2
     },
     "num_highway_layers": 2,
     "soft_align_matrix_attention": {
