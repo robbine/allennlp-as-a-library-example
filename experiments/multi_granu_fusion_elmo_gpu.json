@@ -76,8 +76,7 @@
     "dropout": 0.2
   },
   "iterator": {
-    "type": "bucket",
-    "sorting_keys": [["passage", "num_tokens"]],
+    "type": "basic",
     "batch_size": 32
   },
 
