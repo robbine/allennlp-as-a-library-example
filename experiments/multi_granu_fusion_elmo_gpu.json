@@ -28,7 +28,7 @@
       "num_layers": 1,
       "dropout": 0.2
     },
-    "num_highway_layers": 2,
+    "num_highway_layers": 1,
     "soft_align_matrix_attention": {
       "input_dim": 200,
       "hidden_dim": 200,
