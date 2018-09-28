@@ -77,8 +77,8 @@
   },
   "iterator": {
     "type": "bucket",
-    "sorting_keys": [["passage", "num_tokens"], ["question", "num_tokens"]],
-    "batch_size": 5
+    "sorting_keys": [["passage", "num_tokens"]],
+    "batch_size": 32
   },
 
   "trainer": {
