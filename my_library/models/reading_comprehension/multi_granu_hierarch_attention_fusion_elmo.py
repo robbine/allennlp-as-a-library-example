@@ -102,7 +102,7 @@ class MultiGranuFusionElmo(Model):
 		passage_modeling_output_dim = self._passage_modeling_layer.get_output_dim()
 		question_modeling_output_dim = self._question_modeling_layer.get_output_dim()
 
-		encoding_dim = phrase_layer.get_output_dim()
+		encoding_dim = phrase_layer.get_output_dim() + phrase_layer_elmo.get_output_dim()
 		self._passage_fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
 		self._question_fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
 		self._fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
