@@ -77,8 +77,9 @@
     "dropout": 0.2
   },
   "iterator": {
-    "type": "basic",
-    "batch_size": 32
+    "type": "bucket",
+    "sorting_keys": [["passage", "num_tokens"], ["question", "num_tokens"]],
+    "batch_size": 40
   },
 
   "trainer": {
