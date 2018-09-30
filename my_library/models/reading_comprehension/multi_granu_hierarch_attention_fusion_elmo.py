@@ -253,7 +253,7 @@ class MultiGranuFusionElmo(Model):
 		passage_passage_vector = util.weighted_sum(gated_passage, passage_passage_attention)
 		final_passage = self._fusion_function(gated_passage, passage_passage_vector)
 
-		modeled_passage = self._dropout(self._passage_modeling_layer(final_passage, passage_lstm_mask))
+		modeled_passage = self._dropout(self._passage_modeling_layer(final_passage.cuda(), passage_lstm_mask.cuda()))
 		modeling_dim = modeled_passage.size(-1)
 
 		span_logits = self._span_predictor(modeled_passage)
