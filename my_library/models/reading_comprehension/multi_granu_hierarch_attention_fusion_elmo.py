@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional
 import torch
 import torch.nn as nn
 from torch.nn.functional import nll_loss
-from allennlp.common.checks import check_dimensions_match
 from allennlp.data import Vocabulary
 from allennlp.models.model import Model
 from allennlp.modules import Highway
@@ -90,6 +89,8 @@ class MultiGranuFusionElmo(Model):
 		self._phrase_layer_elmo = phrase_layer_elmo
 		self._highway_layer = TimeDistributed(Highway(text_field_embedder.get_output_dim(),
 													  num_highway_layers))
+		self._highway_layer_elmo = TimeDistributed(
+			Highway(text_field_embedder_elmo.get_output_dim(), num_highway_layers))
 		self._phrase_layer = phrase_layer
 		self._matrix_attention = soft_align_matrix_attention
 		self._self_matrix_attention = self_matrix_attention
@@ -207,8 +208,8 @@ class MultiGranuFusionElmo(Model):
 		"""
 		embedded_question = self._highway_layer(self._text_field_embedder(question))
 		embedded_passage = self._highway_layer(self._text_field_embedder(passage))
-		embedded_question_elmo = self._text_field_embedder_elmo(question)
-		embedded_passage_elmo = self._text_field_embedder_elmo(passage)
+		embedded_question_elmo = self._highway_layer_elmo(self._text_field_embedder_elmo(question))
+		embedded_passage_elmo = self._highway_layer_elmo(self._text_field_embedder_elmo(passage))
 		batch_size = embedded_question.size(0)
 		passage_length = embedded_passage.size(1)
 		question_mask = util.get_text_field_mask(question).float()
@@ -242,7 +243,8 @@ class MultiGranuFusionElmo(Model):
 		passage_fusion = self._passage_fusion_function(encoded_passage, passage_question_vectors)
 		gated_passage = passage_gate * passage_fusion + (1 - passage_gate) * encoded_passage
 
-		question_gate = torch.unsqueeze(self._question_similarity_function(encoded_question, question_passage_vector), -1)
+		question_gate = torch.unsqueeze(self._question_similarity_function(encoded_question, question_passage_vector),
+										-1)
 		question_fusion = self._question_fusion_function(encoded_question, question_passage_vector)
 		gated_question = question_gate * question_fusion + (1 - question_gate) * encoded_question
 
@@ -281,13 +283,14 @@ class MultiGranuFusionElmo(Model):
 			weight = self._span_weight.cuda(device_id) if device_id >= 0 else self._span_weight
 			arange_mask = util.get_range_vector(passage_length, util.get_device_of(span_start))
 			span_mask = (arange_mask >= span_start) & (arange_mask <= span_end)
-			span_loss = nll_loss(self._masked_log_softmax(span_logits, passage_mask).transpose(1,2), span_mask.long(), weight=weight)
+			span_loss = nll_loss(self._masked_log_softmax(span_logits, passage_mask).transpose(1, 2), span_mask.long(),
+								 weight=weight)
 			loss = nll_loss(util.masked_log_softmax(span_start_logits, passage_mask), span_start.squeeze(-1))
 			self._span_start_accuracy(span_start_logits, span_start.squeeze(-1))
 			loss += nll_loss(util.masked_log_softmax(span_end_logits, passage_mask), span_end.squeeze(-1))
 			self._span_end_accuracy(span_end_logits, span_end.squeeze(-1))
 			self._span_accuracy(best_span, torch.stack([span_start, span_end], -1))
-			output_dict["loss"] = loss + span_loss/2
+			output_dict["loss"] = loss + span_loss / 2
 
 		# Compute the EM and F1 on SQuAD and add the tokenized input to the output.
 		if metadata is not None:
