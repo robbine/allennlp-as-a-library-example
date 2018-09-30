@@ -94,7 +94,7 @@ class MultiGranuFusionElmo(Model):
 		self._phrase_layer = phrase_layer
 		self._matrix_attention = soft_align_matrix_attention
 		self._self_matrix_attention = self_matrix_attention
-		self._passage_modeling_layer = passage_modeling_layer
+		self._passage_modeling_layer = passage_modeling_layer.cuda()
 		self._question_modeling_layer = question_modeling_layer
 		self._question_encoding_layer = question_encoding_layer
 		self._passage_similarity_function = passage_similarity_function
