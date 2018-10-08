@@ -70,7 +70,6 @@ class MultiGranuFusionElmo(Model):
 				 text_field_embedder_elmo: TextFieldEmbedder,
 				 num_highway_layers: int,
 				 phrase_layer: Seq2SeqEncoder,
-				 phrase_layer_elmo: Seq2SeqEncoder,
 				 soft_align_matrix_attention: SoftAlignmentMatrixAttention,
 				 self_matrix_attention: BilinearMatrixAttention,
 				 passage_modeling_layer: Seq2SeqEncoder,
@@ -86,15 +85,12 @@ class MultiGranuFusionElmo(Model):
 
 		self._text_field_embedder = text_field_embedder
 		self._text_field_embedder_elmo = text_field_embedder_elmo
-		self._phrase_layer_elmo = phrase_layer_elmo
-		self._highway_layer = TimeDistributed(Highway(text_field_embedder.get_output_dim(),
+		self._highway_layer = TimeDistributed(Highway(text_field_embedder.get_output_dim() + text_field_embedder_elmo.get_output_dim(),
 													  num_highway_layers))
-		self._highway_layer_elmo = TimeDistributed(
-			Highway(text_field_embedder_elmo.get_output_dim(), num_highway_layers))
 		self._phrase_layer = phrase_layer
 		self._matrix_attention = soft_align_matrix_attention
 		self._self_matrix_attention = self_matrix_attention
-		self._passage_modeling_layer = passage_modeling_layer.cuda()
+		self._passage_modeling_layer = passage_modeling_layer
 		self._question_modeling_layer = question_modeling_layer
 		self._question_encoding_layer = question_encoding_layer
 		self._passage_similarity_function = passage_similarity_function
@@ -103,7 +99,7 @@ class MultiGranuFusionElmo(Model):
 		passage_modeling_output_dim = self._passage_modeling_layer.get_output_dim()
 		question_modeling_output_dim = self._question_modeling_layer.get_output_dim()
 
-		encoding_dim = phrase_layer.get_output_dim() + phrase_layer_elmo.get_output_dim()
+		encoding_dim = phrase_layer.get_output_dim()
 		self._passage_fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
 		self._question_fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
 		self._fusion_weight = nn.Linear(encoding_dim * 4, encoding_dim)
@@ -206,10 +202,10 @@ class MultiGranuFusionElmo(Model):
 			string from the original passage that the model thinks is the best answer to the
 			question.
 		"""
-		embedded_question = self._highway_layer(self._text_field_embedder(question))
-		embedded_passage = self._highway_layer(self._text_field_embedder(passage))
-		embedded_question_elmo = self._highway_layer_elmo(self._text_field_embedder_elmo(question))
-		embedded_passage_elmo = self._highway_layer_elmo(self._text_field_embedder_elmo(passage))
+		concat_question = torch.cat((self._text_field_embedder(question), self._text_field_embedder_elmo(question)), -1)
+		concat_passage = torch.cat((self._text_field_embedder(passage), self._text_field_embedder_elmo(passage)), -1)
+		embedded_question = self._highway_layer(concat_question)
+		embedded_passage = self._highway_layer(concat_passage)
 		batch_size = embedded_question.size(0)
 		passage_length = embedded_passage.size(1)
 		question_mask = util.get_text_field_mask(question).float()
@@ -219,10 +215,8 @@ class MultiGranuFusionElmo(Model):
 
 		phrase_question = self._phrase_layer(embedded_question, question_lstm_mask)
 		phrase_passage = self._phrase_layer(embedded_passage, passage_lstm_mask)
-		phrase_question_elmo = self._phrase_layer_elmo(embedded_question_elmo, question_lstm_mask)
-		phrase_passage_elmo = self._phrase_layer_elmo(embedded_passage_elmo, passage_lstm_mask)
-		encoded_question = self._dropout(torch.cat((phrase_question, phrase_question_elmo), -1))
-		encoded_passage = self._dropout(torch.cat((phrase_passage, phrase_passage_elmo), -1))
+		encoded_question = self._dropout(phrase_question)
+		encoded_passage = self._dropout(phrase_passage)
 		encoding_dim = encoded_question.size(-1)
 
 		# Shape: (batch_size, passage_length, question_length)
@@ -253,7 +247,7 @@ class MultiGranuFusionElmo(Model):
 		passage_passage_vector = util.weighted_sum(gated_passage, passage_passage_attention)
 		final_passage = self._fusion_function(gated_passage, passage_passage_vector)
 
-		modeled_passage = self._dropout(self._passage_modeling_layer(final_passage.cuda(), passage_lstm_mask.cuda()))
+		modeled_passage = self._dropout(self._passage_modeling_layer(final_passage, passage_lstm_mask))
 		modeling_dim = modeled_passage.size(-1)
 
 		span_logits = self._span_predictor(modeled_passage)

@@ -63,25 +63,16 @@
           "type": "elmo_token_embedder",
           "options_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_options.json",
           "weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5",
-          "do_layer_norm": false,
-          "requires_grad": true,
+          "do_layer_norm": true,
           "dropout": 0.5
         }
       }
     },
-    "phrase_layer_elmo": {
-      "type": "alternating_lstm",
-      "input_size": 1024,
-      "hidden_size": 200,
-      "num_layers": 8,
-      "recurrent_dropout_probability": 0.1,
-      "use_highway": true
-    },
     "phrase_layer": {
       "type": "lstm",
       "bidirectional": true,
-      "input_size": 200,
-      "hidden_size": 100,
+      "input_size": 1224,
+      "hidden_size": 200,
       "num_layers": 1,
       "dropout": 0.2
     },
