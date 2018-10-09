@@ -65,6 +65,7 @@
           "weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5",
           "do_layer_norm": true,
           "requires_grad": true,
+          "projection_dim": 200,
           "dropout": 0.5
         }
       }
@@ -72,11 +73,12 @@
     "phrase_layer": {
       "type": "lstm",
       "bidirectional": true,
-      "input_size": 1224,
+      "input_size": 400,
       "hidden_size": 200,
       "num_layers": 1,
       "dropout": 0.2
     },
+    "highway_dim": 400,
     "num_highway_layers": 2,
     "soft_align_matrix_attention": {
       "input_dim": 400,
