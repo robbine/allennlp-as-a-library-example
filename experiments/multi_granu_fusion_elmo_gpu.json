@@ -128,9 +128,9 @@
   },
   "iterator": {
     "type": "bucket",
-    "max_instances_in_memory": 1000,
+    "max_instances_in_memory": 500,
     "sorting_keys": [["passage", "num_tokens"], ["question", "num_tokens"]],
-    "batch_size": 60
+    "batch_size": 20
   },
 
   "trainer": {
