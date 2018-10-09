@@ -234,8 +234,11 @@ class MultiGranuFusionElmo(Model):
 		question_passage_vector = util.weighted_sum(encoded_passage, question_passage_attention)
 
 		passage_gate = torch.unsqueeze(self._passage_similarity_function(encoded_passage, passage_question_vectors), -1)
+		print('passage_gate', passage_gate.is_cuda)
 		passage_fusion = self._passage_fusion_function(encoded_passage, passage_question_vectors)
+		print('passage_fusion', passage_fusion.is_cuda)
 		gated_passage = passage_gate * passage_fusion + (1 - passage_gate) * encoded_passage
+		print('gated_passage', gated_passage.is_cuda)
 
 		question_gate = torch.unsqueeze(self._question_similarity_function(encoded_question, question_passage_vector),
 										-1)
@@ -243,9 +246,13 @@ class MultiGranuFusionElmo(Model):
 		gated_question = question_gate * question_fusion + (1 - question_gate) * encoded_question
 
 		passage_passage_similarity = self._self_matrix_attention(gated_passage, gated_passage)
+		print('passage_passage_similarity', passage_passage_similarity.is_cuda)
 		passage_passage_attention = util.masked_softmax(passage_passage_similarity, passage_mask, dim=-1)
+		print('passage_passage_attention', passage_passage_attention.is_cuda)
 		passage_passage_vector = util.weighted_sum(gated_passage, passage_passage_attention)
+		print('passage_passage_vector', passage_passage_vector.is_cuda)
 		final_passage = self._fusion_function(gated_passage, passage_passage_vector)
+		print('final_passage', final_passage.is_cuda)
 
 		modeled_passage = self._dropout(self._passage_modeling_layer(final_passage, passage_lstm_mask))
 		modeling_dim = modeled_passage.size(-1)
