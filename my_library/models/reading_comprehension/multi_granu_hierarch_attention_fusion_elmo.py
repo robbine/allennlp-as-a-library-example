@@ -253,7 +253,7 @@ class MultiGranuFusionElmo(Model):
 		print('passage_passage_vector', passage_passage_vector.is_cuda)
 		final_passage = self._fusion_function(gated_passage, passage_passage_vector)
 		print('final_passage', final_passage.is_cuda)
-
+		print('_passage_modeling_layer', next(self._passage_modeling_layer.parameters()).is_cuda)
 		modeled_passage = self._dropout(self._passage_modeling_layer(final_passage, passage_lstm_mask))
 		modeling_dim = modeled_passage.size(-1)
 
