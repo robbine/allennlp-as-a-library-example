@@ -70,6 +70,8 @@
         }
       }
     },
+    "highway_dim": 400,
+    "num_highway_layers": 2,
     "phrase_layer": {
       "type": "lstm",
       "bidirectional": true,
@@ -78,8 +80,6 @@
       "num_layers": 1,
       "dropout": 0.2
     },
-    "highway_dim": 400,
-    "num_highway_layers": 2,
     "soft_align_matrix_attention": {
       "input_dim": 400,
       "hidden_dim": 400,
@@ -130,7 +130,7 @@
     "type": "bucket",
     "max_instances_in_memory": 1000,
     "sorting_keys": [["passage", "num_tokens"], ["question", "num_tokens"]],
-    "batch_size": 20
+    "batch_size": 60
   },
 
   "trainer": {
@@ -146,8 +146,7 @@
       "patience": 2
     },
     "optimizer": {
-      "type": "adam",
-      "betas": [0.9, 0.9]
+      "type": "adadelta"
     }
   }
 }
