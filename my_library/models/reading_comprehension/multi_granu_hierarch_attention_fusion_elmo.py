@@ -291,7 +291,7 @@ class MultiGranuFusionElmo(Model):
 			loss += nll_loss(util.masked_log_softmax(span_end_logits, passage_mask), span_end.squeeze(-1))
 			self._span_end_accuracy(span_end_logits, span_end.squeeze(-1))
 			self._span_accuracy(best_span, torch.stack([span_start, span_end], -1))
-			output_dict["loss"] = loss + span_loss / 2
+			output_dict["loss"] = loss + span_loss / 10
 
 		# Compute the EM and F1 on SQuAD and add the tokenized input to the output.
 		if metadata is not None:
