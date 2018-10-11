@@ -85,14 +85,14 @@
       "activation": "relu"
     },
     "self_matrix_attention": {
-      "matrix_1_dim": 400,
-      "matrix_2_dim": 400,
+      "matrix_1_dim": 656,
+      "matrix_2_dim": 656,
       "activation": "relu"
     },
     "passage_modeling_layer": {
       "type": "lstm",
       "bidirectional": true,
-      "input_size": 400,
+      "input_size": 656,
       "hidden_size": 100,
       "num_layers": 2,
       "dropout": 0.2
@@ -100,7 +100,7 @@
     "question_modeling_layer": {
       "type": "lstm",
       "bidirectional": true,
-      "input_size": 400,
+      "input_size": 656,
       "hidden_size": 100,
       "num_layers": 2,
       "dropout": 0.2
