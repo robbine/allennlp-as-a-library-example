@@ -70,6 +70,7 @@ class MultiGranuFusionElmo(Model):
 				 text_field_embedder_elmo: TextFieldEmbedder,
 				 num_highway_layers: int,
 				 highway_dim: int,
+				 highway_elmo_dim: int,
 				 phrase_layer: Seq2SeqEncoder,
 				 soft_align_matrix_attention: SoftAlignmentMatrixAttention,
 				 self_matrix_attention: BilinearMatrixAttention,
@@ -87,6 +88,7 @@ class MultiGranuFusionElmo(Model):
 		self._text_field_embedder = text_field_embedder
 		self._text_field_embedder_elmo = text_field_embedder_elmo
 		self._highway_layer = TimeDistributed(Highway(highway_dim, num_highway_layers))
+		self._highway_elmo_layer = TimeDistributed(Highway(highway_elmo_dim, num_highway_layers))
 		self._phrase_layer = phrase_layer
 		self._matrix_attention = soft_align_matrix_attention
 		self._self_matrix_attention = self_matrix_attention
@@ -214,8 +216,8 @@ class MultiGranuFusionElmo(Model):
 
 		phrase_question = self._phrase_layer(embedded_question, question_lstm_mask)
 		phrase_passage = self._phrase_layer(embedded_passage, passage_lstm_mask)
-		concat_question = torch.cat((phrase_question, self._text_field_embedder_elmo(question)), -1)
-		concat_passage = torch.cat((phrase_passage, self._text_field_embedder_elmo(passage)), -1)
+		concat_question = torch.cat((phrase_question, self._highway_elmo_layer(self._text_field_embedder_elmo(question))), -1)
+		concat_passage = torch.cat((phrase_passage, self._highway_elmo_layer(self._text_field_embedder_elmo(passage))), -1)
 		encoded_question = self._dropout(concat_question)
 		encoded_passage = self._dropout(concat_passage)
 		encoding_dim = encoded_question.size(-1)

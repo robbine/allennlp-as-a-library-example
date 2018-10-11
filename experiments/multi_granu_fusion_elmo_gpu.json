@@ -70,6 +70,7 @@
       }
     },
     "highway_dim": 200,
+    "highway_elmo_dim": 256,
     "num_highway_layers": 2,
     "phrase_layer": {
       "type": "lstm",
