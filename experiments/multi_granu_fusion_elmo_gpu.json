@@ -112,15 +112,15 @@
     "passage_similarity_function": {
       "type": "linear",
       "combination": "x,y,x*y,x-y",
-      "tensor_1_dim": 400,
-      "tensor_2_dim": 400,
+      "tensor_1_dim": 656,
+      "tensor_2_dim": 656,
       "activation": "sigmoid"
     },
     "question_similarity_function": {
       "type": "linear",
       "combination": "x,y,x*y,x-y",
-      "tensor_1_dim": 400,
-      "tensor_2_dim": 400,
+      "tensor_1_dim": 656,
+      "tensor_2_dim": 656,
       "activation": "sigmoid"
     },
     "dropout": 0.2
