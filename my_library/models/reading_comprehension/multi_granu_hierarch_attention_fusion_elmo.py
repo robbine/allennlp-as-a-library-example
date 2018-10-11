@@ -202,10 +202,9 @@ class MultiGranuFusionElmo(Model):
 			string from the original passage that the model thinks is the best answer to the
 			question.
 		"""
-		concat_question = torch.cat((self._text_field_embedder(question), self._text_field_embedder_elmo(question)), -1)
-		concat_passage = torch.cat((self._text_field_embedder(passage), self._text_field_embedder_elmo(passage)), -1)
-		embedded_question = self._highway_layer(concat_question)
-		embedded_passage = self._highway_layer(concat_passage)
+
+		embedded_question = self._highway_layer(self._text_field_embedder(question))
+		embedded_passage = self._highway_layer(self._text_field_embedder(passage))
 		batch_size = embedded_question.size(0)
 		passage_length = embedded_passage.size(1)
 		question_mask = util.get_text_field_mask(question).float()
@@ -215,8 +214,10 @@ class MultiGranuFusionElmo(Model):
 
 		phrase_question = self._phrase_layer(embedded_question, question_lstm_mask)
 		phrase_passage = self._phrase_layer(embedded_passage, passage_lstm_mask)
-		encoded_question = self._dropout(phrase_question)
-		encoded_passage = self._dropout(phrase_passage)
+		concat_question = torch.cat((phrase_question, self._text_field_embedder_elmo(question)), -1)
+		concat_passage = torch.cat((phrase_passage, self._text_field_embedder_elmo(passage)), -1)
+		encoded_question = self._dropout(concat_question)
+		encoded_passage = self._dropout(concat_passage)
 		encoding_dim = encoded_question.size(-1)
 
 		# Shape: (batch_size, passage_length, question_length)
