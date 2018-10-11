@@ -74,13 +74,13 @@
     "phrase_layer": {
       "type": "lstm",
       "bidirectional": true,
-      "input_size": 456,
+      "input_size": 200,
       "hidden_size": 200,
       "num_layers": 1,
       "dropout": 0.2
     },
     "soft_align_matrix_attention": {
-      "input_dim": 400,
+      "input_dim": 656,
       "hidden_dim": 400,
       "activation": "relu"
     },
