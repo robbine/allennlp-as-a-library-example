@@ -69,7 +69,7 @@
         }
       }
     },
-    "highway_dim": 456,
+    "highway_dim": 200,
     "num_highway_layers": 2,
     "phrase_layer": {
       "type": "lstm",
