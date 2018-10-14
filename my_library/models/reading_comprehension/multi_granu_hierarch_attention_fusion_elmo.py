@@ -88,7 +88,7 @@ class MultiGranuFusionElmo(Model):
 		self._text_field_embedder = text_field_embedder
 		self._text_field_embedder_elmo = text_field_embedder_elmo
 		self._highway_layer = TimeDistributed(Highway(highway_dim, num_highway_layers))
-		self._highway_elmo_layer = TimeDistributed(Highway(highway_elmo_dim, num_highway_layers, torch.nn.functional.tanh))
+		self._highway_elmo_layer = TimeDistributed(Highway(highway_elmo_dim, num_highway_layers))
 		self._phrase_layer = phrase_layer
 		self._matrix_attention = soft_align_matrix_attention
 		self._self_matrix_attention = self_matrix_attention

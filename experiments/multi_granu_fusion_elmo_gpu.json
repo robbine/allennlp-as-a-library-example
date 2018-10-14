@@ -146,7 +146,8 @@
       "patience": 2
     },
     "optimizer": {
-      "type": "adadelta"
+      "type": "adadelta",
+      "weight_decay": 0.01
     }
   }
 }
