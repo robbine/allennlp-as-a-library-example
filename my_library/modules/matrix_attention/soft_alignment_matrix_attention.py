@@ -6,7 +6,7 @@ from allennlp.modules.matrix_attention.matrix_attention import MatrixAttention
 from allennlp.nn.activations import Activation
 
 
-@MatrixAttention.register("soft-align")
+@MatrixAttention.register("soft-align-2")
 class SoftAlignmentMatrixAttention(MatrixAttention):
 	"""
 	Computes attention between every entry in matrix_1 with every entry in matrix_2 using cosine

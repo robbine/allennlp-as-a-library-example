@@ -5,7 +5,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from allennlp.nn import util
-from allennlp.nn.util import weighted_sum
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -86,15 +85,15 @@ def get_timing_signal_1d(length,
 	num_timescales = channels // 2
 	log_timescale_increment = (
 		math.log(float(max_timescale) / float(min_timescale)) /
-		max(num_timescales - 1, 1)
+		max(num_timescales - 1.0, 1.0)
 	)
 	inv_timescales = min_timescale * torch.exp(
-		util.get_range_vector(num_timescales, device) * -log_timescale_increment)
+		util.get_range_vector(num_timescales, device).float() * -log_timescale_increment)
 	scaled_time = torch.unsqueeze(position, 1) * torch.unsqueeze(inv_timescales, 0)
-	signal = torch.cat([torch.sin(scaled_time), torch.cos(scaled_time)], axis=1)
-	pad = nn.ConstantPad2d((0, 0, 0, channels % 2), 0)
+	signal = torch.cat([torch.sin(scaled_time), torch.cos(scaled_time)], dim=1)
+	pad = nn.ConstantPad1d((0, channels % 2), 0)
 	signal = pad(signal)
-	signal = torch.view(signal, [1, length, channels])
+	signal = signal.view(1, length, channels)
 	return signal
 
 
@@ -121,8 +120,8 @@ def add_timing_signal_1d(x, device, min_timescale=1.0, max_timescale=1.0e4, star
 	  Returns:
 	    a Tensor the same shape as x.
 	"""
-	length = torch.size(x, 1)
-	channels = torch.size(x, 2)
+	length = x.size(1)
+	channels = x.size(2)
 	signal = get_timing_signal_1d(length, channels, device, min_timescale, max_timescale, start_index)
 	return x + signal
 
@@ -138,7 +137,7 @@ def attention_bias_to_padding(attention_bias):
 	  """
 	# `attention_bias` is a large negative number in padding positions and 0.0
 	# elsewhere.
-	return torch.squeeze(((attention_bias < -1).float()), axis=[1, 2])
+	return torch.squeeze(torch.squeeze(((attention_bias < -1).float()), dim=1), dim=1)
 
 
 def compute_qkv(query_antecedent,
@@ -177,8 +176,8 @@ def split_heads(x, num_heads):
 def dot_product_attention(q,
 						  k,
 						  v,
-						  bias,
-						  dropout):
+						  bias=None,
+						  dropout=None):
 	"""Dot-product attention.
 	Args:
 	  q: Tensor with shape [..., length_q, depth_k].
@@ -200,21 +199,16 @@ def dot_product_attention(q,
 	Returns:
 	  Tensor with shape [..., length_q, depth_v].
 	"""
-	batch, num_heads, length_q, depth_k = q.size()
-	length_kv = k.size(2)
-	depth_v = v.size(3)
-	q = q.view(batch * num_heads, length_q, -1)
-	k = k.view(batch * num_heads, length_kv, -1)
-	v = v.view(batch * num_heads, length_kv, -1)
-	scaled_similarities = torch.bmm(q, k.transpose(1, 2))
-	logits = scaled_similarities.view(batch, num_heads, length_q, length_kv) + bias
+	logits = torch.matmul(q, k.transpose(-1, -2))  # [..., length_q, length_kv]
+	if bias is not None:
+		logits += bias
 	weights = torch.nn.functional.softmax(logits, dim=-1)
-	weights = dropout(weights).view(-1, length_q, length_kv)
-	outputs = weighted_sum(v, weights)
-	return outputs.view(batch, num_heads, length_q, depth_v)
+	if dropout is not None:
+		weights = dropout(weights)
+	return torch.matmul(weights, v)
 
 
-def _generate_relative_positions_matrix(length, max_relative_position, device):
+def _generate_relative_positions_matrix(length, max_relative_position, device=-1):
 	"""Generates matrix of relative positions between inputs."""
 	range_vec = util.get_range_vector(length, device)
 	range_mat = range_vec.repeat(length, 1)
@@ -227,12 +221,13 @@ def _generate_relative_positions_matrix(length, max_relative_position, device):
 	return final_mat
 
 
-def _generate_relative_positions_embeddings(length, depth, max_relative_position, embedding, device):
+def _generate_relative_positions_embeddings(length, depth, max_relative_position, embedding, device=-1):
 	"""Generates tensor of size [length, length, depth]."""
 	relative_positions_matrix = _generate_relative_positions_matrix(
 		length, max_relative_position, device)
-	embeddings = torch.gather(embedding, relative_positions_matrix)
-	return embeddings
+	embeddings = torch.index_select(embedding, 0, relative_positions_matrix.view(-1))
+	# embeddings = torch.gather(embedding, 1, relative_positions_matrix)
+	return embeddings.view(length, length, depth)
 
 
 def _relative_attention_inner(x, y, z, transpose):
@@ -250,7 +245,10 @@ def _relative_attention_inner(x, y, z, transpose):
 	batch_size, heads, length, depth = x.size()
 
 	# xy_matmul is [batch_size, heads, length, length or depth]
-	xy_matmul = torch.matmul(x, y.transpose(2, 3))
+	if transpose:
+		xy_matmul = torch.matmul(x, y.transpose(2, 3))
+	else:
+		xy_matmul = torch.matmul(x, y)
 	# x_t is [length, batch_size, heads, length or depth]
 	x_t = x.permute(2, 0, 1, 3)
 	# x_t_r is [length, batch_size * heads, length or depth]
@@ -271,7 +269,9 @@ def dot_product_attention_relative(q,
 								   v,
 								   bias,
 								   max_relative_position,
-								   dropout):
+								   dropout,
+								   key_embedding,
+								   value_embedding):
 	"""Calculate relative position-aware dot-product self-attention.
 	  The attention calculation is augmented with learned representations for the
 	  relative position between each element in q and each element in k and v.
@@ -296,9 +296,9 @@ def dot_product_attention_relative(q,
 	batch, num_heads, length, depth = q.size()
 	device = util.get_device_of(q)
 	relations_keys = _generate_relative_positions_embeddings(length, depth, max_relative_position,
-															 "relative_positions_values", device)
+															 key_embedding, device)
 	relations_values = _generate_relative_positions_embeddings(length, depth, max_relative_position,
-															   "relative_positions_values", device)
+															   value_embedding, device)
 	# Compute self attention considering the relative position embeddings.
 	logits = _relative_attention_inner(q, k, relations_keys, True)
 	if bias is not None:
@@ -369,7 +369,7 @@ def _make_local_block(x, depth, batch, heads, num_blocks, block_length):
 def masked_local_attention_1d(q,
 							  k,
 							  v,
-							  block_length=128,
+							  block_length=64,
 							  dropout=None):
 	"""Attention to the source position and a neighborhood to the left of it.
 	The sequence is divided into blocks of length block_length. Attention for a
@@ -444,8 +444,7 @@ def masked_local_attention_1d(q,
 
 
 def get_relative_embeddings_left(relative_embeddings, max_relative_position, length, depth,
-								 num_heads, heads_share_relative_embedding,
-								 name):
+								 num_heads, heads_share_relative_embedding):
 	"""Instantiate or retrieve relative embeddings, sliced according to length.
 	Use for masked case where the relative attention is only looking left.
 	Args:
@@ -465,13 +464,11 @@ def get_relative_embeddings_left(relative_embeddings, max_relative_position, len
 	# Pad first before slice to avoid using tf.cond.
 	pad_length = max(length - max_relative_position, 0)
 	start_slice_position = max(max_relative_position - length, 0)
+	pad = nn.ConstantPad2d((0, 0, pad_length, 0), 0)
+	padded_relative_embeddings = pad(relative_embeddings)
 	if heads_share_relative_embedding:
-		pad = nn.ConstantPad2d((0, 0, pad_length, 0), 0)
-		padded_relative_embeddings = pad(relative_embeddings)
 		used_relative_embeddings = padded_relative_embeddings.narrow(0, start_slice_position, length)
 	else:
-		pad = nn.ConstantPad2d((0, 0, pad_length, 0), 0)
-		padded_relative_embeddings = pad(relative_embeddings)
 		used_relative_embeddings = padded_relative_embeddings.narrow(1, start_slice_position, length)
 	return used_relative_embeddings
 
@@ -486,9 +483,9 @@ def matmul_with_relative_keys(x, y, heads_share_relative_embedding):
 
 def matmul_with_relative_values(x, y, heads_share_relative_embedding):
 	if heads_share_relative_embedding:
-		ret = torch.einsum("bhlm,md->bhld", x, y)
+		ret = torch.einsum("bhlm,md->bhld", (x, y))
 	else:
-		ret = torch.einsum("bhlm,hmd->bhld", x, y)
+		ret = torch.einsum("bhlm,hmd->bhld", (x, y))
 	return ret
 
 
@@ -510,7 +507,7 @@ def _relative_position_to_absolute_position_masked(x):
 	pad = nn.ConstantPad1d((1, 0), 0)
 	x = pad(x)
 	x = x.view(batch, heads, 1 + length, length)
-	x.narrow(2, 0, length - 1)
+	x = x.narrow(2, 1, length)
 	return x
 
 
@@ -537,8 +534,7 @@ def _relative_position_to_absolute_position_unmasked(x):
 
 	# Reshape and slice out the padded elements.
 	final_x = flat_x_padded.view(batch, heads, length + 1, 2 * length - 1)
-	final_x = final_x[:, :, :, length - 1:]
-	final_x = final_x[:, :, :length, :]
+	final_x = final_x[:, :, :length, length-1:]
 	return final_x
 
 
@@ -564,7 +560,7 @@ def _absolute_position_to_relative_position_unmasked(x):
 	pad = nn.ConstantPad1d((length, 0), 0)
 	x_flat = pad(x_flat)
 	x = x_flat.view(batch, heads, length, 2 * length)
-	x.narrow(3, 1, 2 * length - 1)
+	x = x.narrow(3, 1, 2 * length - 1)
 	return x
 
 
@@ -583,7 +579,7 @@ def _absolute_position_to_relative_position_masked(x):
 	  a Tensor with shape [batch, heads, length, length]
 	"""
 	batch, heads, length, _ = x.size()
-	pad = nn.ConstantPad2d(0, 0, 1, 0)
+	pad = nn.ConstantPad2d((0, 0, 1, 0), 0)
 	x = pad(x)
 	x = x.view(batch, heads, length, length + 1)
 	x = x.narrow(3, 1, length)
@@ -593,8 +589,9 @@ def _absolute_position_to_relative_position_masked(x):
 def masked_relative_local_attention_1d(q,
 									   k,
 									   v,
-									   block_length=128,
-									   relative_embeddings=None,
+									   block_length=64,
+									   relative_key_embeddings=None,
+									   relative_value_embeddings=None,
 									   dropout=None,
 									   heads_share_relative_embedding=False,
 									   add_relative_to_values=False
@@ -645,9 +642,9 @@ def masked_relative_local_attention_1d(q,
 	# 2 * block_length.
 	rel_embed_length = 4 * default_block_length
 	# We only multiply with the needed embeddings as we slice them out.
-	first_rel_embeddings = get_relative_embeddings_left(relative_embeddings,
+	first_rel_embeddings = get_relative_embeddings_left(relative_key_embeddings,
 														rel_embed_length, block_length, depth_k, heads,
-														heads_share_relative_embedding, "relative_embeddings")
+														heads_share_relative_embedding)
 	first_rel_logits = matmul_with_relative_keys(
 		first_q, first_rel_embeddings, heads_share_relative_embedding)
 	first_logits = torch.matmul(first_q, first_k.transpose(-1, -2))
@@ -677,16 +674,16 @@ def masked_relative_local_attention_1d(q,
 	def _reshape_for_relative(x):
 		x_shape = x.size()
 		# [batch, num_blocks, heads, length, depth]
-		x = x.transpose(2, 1)
+		x = x.transpose(2, 1).contiguous()
 		x = x.view(batch * x_shape[2], heads, x_shape[3], x_shape[4])
 		return x
 
 	rel_tail_q = _reshape_for_relative(tail_q)
 	rel_k = _reshape_for_relative(local_k)
 	rel_v = _reshape_for_relative(local_v)
-	rel_embeddings = get_relative_embeddings_left(relative_embeddings,
+	rel_embeddings = get_relative_embeddings_left(relative_key_embeddings,
 												  rel_embed_length, 2 * block_length, depth_k, heads,
-												  heads_share_relative_embedding, "relative_embeddings")
+												  heads_share_relative_embedding)
 	rel_logits = matmul_with_relative_keys(
 		rel_tail_q, rel_embeddings, heads_share_relative_embedding)
 	b, h, l, m = rel_logits.size()
@@ -700,7 +697,7 @@ def masked_relative_local_attention_1d(q,
 		unmasked_rel_logits)
 	all_rel_logits = torch.cat((unmasked_rel_logits, masked_rel_logits), dim=3)
 	all_logits = (
-		torch.matmul(rel_tail_q, rel_k, transpose_b=True) + all_rel_logits)
+		torch.matmul(rel_tail_q, rel_k.transpose(-1, -2).contiguous()) + all_rel_logits)
 	# make sure source_pos <= target_pos
 	good_part = ones_matrix_band_part(block_length,
 									  local_length,
@@ -716,22 +713,21 @@ def masked_relative_local_attention_1d(q,
 	if add_relative_to_values:
 		# Adds the contribution of the weighted relative embeddings to the values.
 		weights_for_unmasked, weights_for_masked = (
-			torch.split(weights, 2, dim=3))
+			torch.split(weights, local_length // 2, dim=3))
 		rel_weights_unmasked = _absolute_position_to_relative_position_unmasked(
 			weights_for_unmasked)
 		rel_weights_masked = _absolute_position_to_relative_position_masked(
 			weights_for_masked)
 
-		value_rel_embeddings_unmasked = get_relative_embeddings_left(relative_embeddings,
+		value_rel_embeddings_unmasked = get_relative_embeddings_left(relative_value_embeddings,
 																	 rel_embed_length, 2 * block_length, depth_v,
-																	 heads, heads_share_relative_embedding,
-																	 "value_relative_embeddings")
+																	 heads, heads_share_relative_embedding)
 		# The unmasked part starts with index -1 as opposed 0 has take uptil last.
 		if heads_share_relative_embedding:
 			value_rel_embeddings_unmasked = value_rel_embeddings_unmasked[:-1, :]
 		else:
 			value_rel_embeddings_unmasked = value_rel_embeddings_unmasked[:, :-1, :]
-		value_rel_embeddings_masked = get_relative_embeddings_left(relative_embeddings,
+		value_rel_embeddings_masked = get_relative_embeddings_left(relative_value_embeddings,
 																   rel_embed_length, block_length, depth_v,
 																   heads, heads_share_relative_embedding)
 
@@ -751,7 +747,7 @@ def masked_relative_local_attention_1d(q,
 
 	# bring to [batch, heads, num_blocks-1, block_length, depth]
 	output = output.view(batch, num_blocks - 1, heads, block_length, depth_v)
-	output = output.transpose(2, 1)
+	output = output.transpose(2, 1).contiguous()
 
 	output = output.view(batch, heads, (num_blocks - 1) * block_length, depth_v)
 	output = torch.cat((first_output, output), dim=2)
@@ -805,8 +801,7 @@ def masked_within_block_local_attention_1d(q, k, v, block_length=64):
 
 def get_relative_embeddings_left_right(relative_embeddings, max_relative_position, length, depth,
 									   num_heads,
-									   heads_share_relative_embedding,
-									   name):
+									   heads_share_relative_embedding):
 	"""Instantiate or retrieve relative embeddings, sliced according to length.
 	Use for unmasked case where the relative attention looks both left and right.
 	Args:
@@ -836,8 +831,8 @@ def get_relative_embeddings_left_right(relative_embeddings, max_relative_positio
 
 
 def dot_product_unmasked_self_attention_relative_v2(
-		q, k, v, bias, relative_embeddings=None, max_relative_position=None, dropout=None,
-		dropout_broadcast_dims=None, heads_share_relative_embedding=False,
+		q, k, v, bias, relative_key_embeddings=None, relative_value_embeddings=None, max_relative_position=None, dropout=None,
+		heads_share_relative_embedding=False,
 		add_relative_to_values=False):
 	"""Calculate relative position-aware dot-product self-attention.
 	The attention calculation is augmented with learned representations for the
@@ -853,9 +848,6 @@ def dot_product_unmasked_self_attention_relative_v2(
 	  image_shapes: optional tuple of integer scalars.
 	  name: an optional string.
 	  make_image_summary: Whether to make an attention image summary.
-	  dropout_broadcast_dims:  an optional list of integers less than 4
-		specifying in which dimensions to broadcast the dropout decisions.
-		saves memory.
 	  heads_share_relative_embedding: a boolean indicating wheather to share
 		relative embeddings between attention heads.
 	  add_relative_to_values: a boolean for whether to add relative component to
@@ -882,10 +874,9 @@ def dot_product_unmasked_self_attention_relative_v2(
 	num_heads = k_shape[1]
 	depth_k = k_shape[-1]
 
-	key_relative_embeddings = get_relative_embeddings_left_right(relative_embeddings,
+	key_relative_embeddings = get_relative_embeddings_left_right(relative_key_embeddings,
 																 max_relative_position, length, depth_k, num_heads,
-																 heads_share_relative_embedding,
-																 "key_relative_embeddings")
+																 heads_share_relative_embedding)
 	unmasked_rel_logits = matmul_with_relative_keys(
 		q, key_relative_embeddings, heads_share_relative_embedding)
 	unmasked_rel_logits = _relative_position_to_absolute_position_unmasked(
@@ -904,7 +895,7 @@ def dot_product_unmasked_self_attention_relative_v2(
 		relative_weights = _absolute_position_to_relative_position_unmasked(
 			weights)
 		depth_v = v.size(3)
-		value_relative_embeddings = get_relative_embeddings_left_right(relative_embeddings,
+		value_relative_embeddings = get_relative_embeddings_left_right(relative_value_embeddings,
 																	   max_relative_position, length, depth_v,
 																	   num_heads,
 																	   heads_share_relative_embedding)

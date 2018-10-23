@@ -1,10 +1,10 @@
+from allennlp.modules import Seq2SeqEncoder
 from overrides import overrides
 import torch
 import torch.nn as nn
 from torch.nn import Dropout, Linear
-from allennlp.modules.seq2seq_encoders.seq2seq_encoder import Seq2SeqEncoder
 
-import my_library.modules.layers.common_attention as common_attention
+from modules.layers import common_attention
 
 
 @Seq2SeqEncoder.register("multi_head_attention")
@@ -84,57 +84,57 @@ class MultiHeadAttention(Seq2SeqEncoder):
 			raise NotImplementedError('3d embedding not implemented yet')
 
 
-def get_input_dim(self):
-	return self._input_dim
+	def get_input_dim(self):
+		return self._input_dim
 
 
-def get_output_dim(self):
-	return self._output_dim
+	def get_output_dim(self):
+		return self._output_dim
 
 
-@overrides
-def is_bidirectional(self):
-	return False
+	@overrides
+	def is_bidirectional(self):
+		return False
 
 
-@overrides
-def forward(self,  # pylint: disable=arguments-differ
-			inputs: torch.Tensor,
-			memory: torch.Tensor = None,
-			encoder_self_attention_bias: torch.Tensor = None,
-			mask: torch.LongTensor = None) -> torch.FloatTensor:
-	"""
-	Parameters
-	----------
-	inputs : ``torch.FloatTensor``, required.
-		A tensor of shape (batch_size, timesteps, input_dim)
-	mask : ``torch.FloatTensor``, optional (default = None).
-		A tensor of shape (batch_size, timesteps).
+	@overrides
+	def forward(self,  # pylint: disable=arguments-differ
+				inputs: torch.Tensor,
+				memory: torch.Tensor = None,
+				encoder_self_attention_bias: torch.Tensor = None,
+				mask: torch.LongTensor = None) -> torch.FloatTensor:
+		"""
+		Parameters
+		----------
+		inputs : ``torch.FloatTensor``, required.
+			A tensor of shape (batch_size, timesteps, input_dim)
+		mask : ``torch.FloatTensor``, optional (default = None).
+			A tensor of shape (batch_size, timesteps).
+	
+		Returns
+		-------
+		A tensor of shape (batch_size, timesteps, output_projection_dim),
+		where output_projection_dim = input_dim by default.
+		"""
+		outputs = common_attention.multihead_attention(inputs,
+													   memory,
+													   encoder_self_attention_bias,
+													   self._key_depth,
+													   self._value_depth,
+													   self._output_dim,
+													   self._num_heads,
+													   self._attention_dropout,
+													   relative_embeddings=self._relative_embeddings,
+													   key_projection=self._key_projection,
+													   value_projection=self._value_projection,
+													   query_projection=self._query_projection,
+													   heads_share_relative_embedding=self._heads_share_relative_embedding,
+													   add_relative_to_values=self._add_relative_to_values,
+													   block_length=self._block_length,
+													   block_width=self._block_width,
+													   )
 
-	Returns
-	-------
-	A tensor of shape (batch_size, timesteps, output_projection_dim),
-	where output_projection_dim = input_dim by default.
-	"""
-	outputs = common_attention.multihead_attention(inputs,
-												   memory,
-												   encoder_self_attention_bias,
-												   self._key_depth,
-												   self._value_depth,
-												   self._output_dim,
-												   self._num_heads,
-												   self._attention_dropout,
-												   relative_embeddings=self._relative_embeddings,
-												   key_projection=self._key_projection,
-												   value_projection=self._value_projection,
-												   query_projection=self._query_projection,
-												   heads_share_relative_embedding=self._heads_share_relative_embedding,
-												   add_relative_to_values=self._add_relative_to_values,
-												   block_length=self._block_length,
-												   block_width=self._block_width,
-												   )
-
-	# Project back to original input size.
-	# shape (batch_size, timesteps, input_size)
-	outputs = self._output_projection(outputs)
-	return outputs
+		# Project back to original input size.
+		# shape (batch_size, timesteps, input_size)
+		outputs = self._output_projection(outputs)
+		return outputs
