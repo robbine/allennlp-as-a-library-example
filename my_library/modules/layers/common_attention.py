@@ -534,7 +534,7 @@ def _relative_position_to_absolute_position_unmasked(x):
 
 	# Reshape and slice out the padded elements.
 	final_x = flat_x_padded.view(batch, heads, length + 1, 2 * length - 1)
-	final_x = final_x[:, :, :length, length-1:]
+	final_x = final_x[:, :, :length, length - 1:]
 	return final_x
 
 
@@ -637,7 +637,6 @@ def masked_relative_local_attention_1d(q,
 	first_k = k.narrow(2, 0, block_length)
 	first_v = v.narrow(2, 0, block_length)
 	# Relative embeddings will be used later as well.
-	# TODO(avaswani,annahuang): check why 2*bl was breaking for music
 	# Needs to be known at static shape inference time, hence cannot be
 	# 2 * block_length.
 	rel_embed_length = 4 * default_block_length
@@ -831,7 +830,8 @@ def get_relative_embeddings_left_right(relative_embeddings, max_relative_positio
 
 
 def dot_product_unmasked_self_attention_relative_v2(
-		q, k, v, bias, relative_key_embeddings=None, relative_value_embeddings=None, max_relative_position=None, dropout=None,
+		q, k, v, bias, relative_key_embeddings=None, relative_value_embeddings=None, max_relative_position=None,
+		dropout=None,
 		heads_share_relative_embedding=False,
 		add_relative_to_values=False):
 	"""Calculate relative position-aware dot-product self-attention.
@@ -926,7 +926,10 @@ def multihead_attention(query_antecedent,
 						output_depth,
 						num_heads,
 						dropout,
-						relative_embeddings=None,
+						key_embedding=None,
+						value_embedding=None,
+						relative_key_embeddings=None,
+						relative_value_embeddings=None,
 						key_projection=None,
 						value_projection=None,
 						query_projection=None,
@@ -936,20 +939,7 @@ def multihead_attention(query_antecedent,
 						add_relative_to_values=False,
 						image_shapes=None,
 						block_length=128,
-						block_width=128,
-						q_filter_width=1,
-						kv_filter_width=1,
-						q_padding="VALID",
-						kv_padding="VALID",
-						cache=None,
-						gap_size=0,
-						num_memory_blocks=2,
-						name="multihead_attention",
-						save_weights_to=None,
-						make_image_summary=True,
-						dropout_broadcast_dims=None,
-						vars_3d=False,
-						**kwargs):
+						block_width=128):
 	"""Multihead scaled-dot-product attention with input/output transformations.
 	Args:
 	  query_antecedent: a Tensor with shape [batch, length_q, channels]
@@ -1042,17 +1032,20 @@ def multihead_attention(query_antecedent,
 			v,
 			bias,
 			max_relative_position,
-			dropout)
+			dropout,
+			key_embedding=key_embedding,
+			value_embedding=value_embedding
+		)
 	elif attention_type == "dot_product_unmasked_relative_v2":
 		x = dot_product_unmasked_self_attention_relative_v2(
 			q,
 			k,
 			v,
 			bias,
-			relative_embeddings,
-			max_relative_position,
-			dropout,
-			image_shapes,
+			relative_key_embeddings=relative_key_embeddings,
+			relative_value_embeddings=relative_value_embeddings,
+			max_relative_position=max_relative_position,
+			dropout=dropout,
 			heads_share_relative_embedding=heads_share_relative_embedding,
 			add_relative_to_values=add_relative_to_values)
 	elif attention_type == "dot_product_relative_v2":
@@ -1066,6 +1059,8 @@ def multihead_attention(query_antecedent,
 			k,
 			v,
 			block_length=block_length,
+			relative_key_embeddings=relative_key_embeddings,
+			relative_value_embeddings=relative_value_embeddings,
 			dropout=dropout,
 			heads_share_relative_embedding=heads_share_relative_embedding,
 			add_relative_to_values=add_relative_to_values)
@@ -1085,3 +1080,102 @@ def multihead_attention(query_antecedent,
 		raise NotImplementedError("not implemented yet")
 	x = combine_heads(x)
 	return x
+
+
+def embedding_postprocessor(input_tensor,
+							input_mask_tensor,
+							token_type_ids=None,
+							use_token_type=False,
+							token_type_embedding=None,
+							use_position_embeddings=True,
+							position_embedding=None,
+							norm_layer=None,
+							dropout=None):
+	"""Performs various post-processing on a word embedding tensor.
+  
+	Args:
+	  input_tensor: float Tensor of shape [batch_size, seq_length,
+		embedding_size].
+	  use_token_type: bool. Whether to add embeddings for `token_type_ids`.
+	  token_type_ids: (optional) int32 Tensor of shape [batch_size, seq_length].
+		Must be specified if `use_token_type` is True.
+	  token_type_vocab_size: int. The vocabulary size of `token_type_ids`.
+	  token_type_embedding_name: string. The name of the embedding table variable
+		for token type ids.
+	  use_position_embeddings: bool. Whether to add position embeddings for the
+		position of each token in the sequence.
+	  position_embedding_name: string. The name of the embedding table variable
+		for positional embeddings.
+	  initializer_range: float. Range of the weight initialization.
+	  max_position_embeddings: int. Maximum sequence length that might ever be
+		used with this model. This can be longer than the sequence length of
+		input_tensor, but cannot be shorter.
+	  dropout_prob: float. Dropout probability applied to the final output tensor.
+  
+	Returns:
+	  float tensor with same shape as `input_tensor`.
+  
+	Raises:
+	  ValueError: One of the tensor shapes or input values is invalid.
+	"""
+	input_shape = input_tensor.size()
+	batch_size = input_shape[0]
+	seq_length = input_shape[1]
+	width = input_shape[2]
+
+	output = input_tensor
+
+	if use_token_type:
+		if token_type_ids is None:
+			raise ValueError("`token_type_ids` must be specified if"
+							 "`use_token_type` is True.")
+		# This vocab will be small so we always do one-hot here, since it is always
+		# faster for a small vocabulary.
+		output += token_type_embedding(token_type_ids)
+
+	if use_position_embeddings:
+		range_tensor = util.get_range_vector(seq_length, util.get_device_of(input_mask_tensor))
+		range_tensor = range_tensor.view(1, -1)
+		output += position_embedding(input_mask_tensor * range_tensor)
+
+	output = layer_norm_and_dropout(output, norm_layer, dropout)
+	return output
+
+
+def layer_norm(input_tensor, norm_layer):
+	"""Run layer normalization on the last dimension of the tensor."""
+	return norm_layer(input_tensor)
+
+
+def layer_norm_and_dropout(input_tensor, norm_layer, dropout):
+	"""Runs layer normalization followed by dropout."""
+	output_tensor = layer_norm(input_tensor, norm_layer)
+	output_tensor = dropout(output_tensor)
+	return output_tensor
+
+
+def create_attention_mask_from_input_mask(from_tensor, to_mask):
+	"""Create 3D attention mask from a 2D tensor mask.
+  
+	Args:
+	  from_tensor: 2D or 3D Tensor of shape [batch_size, from_seq_length, ...].
+	  to_mask: int32 Tensor of shape [batch_size, to_seq_length].
+  
+	Returns:
+	  float Tensor of shape [batch_size, from_seq_length, to_seq_length].
+	"""
+	from_shape = from_tensor.size()
+	batch_size = from_shape[0]
+	from_seq_length = from_shape[1]
+	to_mask = to_mask.unsqueeze(1).float()
+
+	# We don't assume that `from_tensor` is a mask (although it could be). We
+	# don't actually care if we attend *from* padding tokens (only *to* padding)
+	# tokens so we create a tensor of all ones.
+	#
+	# `broadcast_ones` = [batch_size, from_seq_length, 1]
+	broadcast_ones = torch.ones(batch_size, from_seq_length, 1).float()
+
+	# Here we broadcast along two dimensions to create the mask.
+	mask = broadcast_ones * to_mask
+	return mask

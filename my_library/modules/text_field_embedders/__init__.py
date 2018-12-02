@@ -1,0 +1,1 @@
+from my_library.modules.text_field_embedders.basic_text_field_embedder_v2 import BasicTextFieldEmbedderV2

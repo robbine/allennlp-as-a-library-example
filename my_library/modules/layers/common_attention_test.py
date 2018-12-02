@@ -301,7 +301,7 @@ class TestCommonAttention(unittest.TestCase):
 		add_relative_to_values = True
 		max_relative_position_unmasked = max_relative_position * 2 - 1
 		if heads_share_relative_embedding:
-			relative_key_embeddings = torch.randn(max_relative_position_unmasked, depth)
+			relative_key_embeddings = torch.randn((max_relative_position_unmasked, depth), requires_grad=True)
 			relative_value_embeddings = torch.randn(max_relative_position_unmasked, depth)
 		else:
 			relative_key_embeddings = torch.randn(heads, max_relative_position_unmasked, depth)

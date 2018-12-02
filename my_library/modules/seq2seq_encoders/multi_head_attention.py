@@ -1,3 +1,5 @@
+from typing import Dict
+
 from allennlp.modules import Seq2SeqEncoder
 from overrides import overrides
 import torch
@@ -45,15 +47,18 @@ class MultiHeadAttention(Seq2SeqEncoder):
 				 memory_size: int,
 				 key_depth: int,
 				 value_depth: int,
+				 max_position_embeddings: int = 512,
+				 type_vocab_size: int = 3,
 				 output_projection_dim: int = None,
 				 attention_dropout_prob: float = 0.1,
+				 dropout_prob: float = 0.1,
 				 attention_type: str = 'dot_product',
 				 max_relative_position=None,
 				 heads_share_relative_embedding=True,
 				 add_relative_to_values=False,
-				 image_shapes=None,
-				 block_length=128,
+				 block_length=64,
 				 ) -> None:
+
 		super(MultiHeadAttention, self).__init__()
 
 		self._num_heads = num_heads
@@ -77,19 +82,58 @@ class MultiHeadAttention(Seq2SeqEncoder):
 		self._scale = (input_size // num_heads) ** 0.5
 		self._output_projection = Linear(value_depth, self._output_dim)
 		self._attention_dropout = Dropout(attention_dropout_prob)
-		self._relative_embeddings = None
-		if heads_share_relative_embedding:
-			self._relative_embeddings = nn.Embedding(max_relative_position, key_depth)
-		else:
-			raise NotImplementedError('3d embedding not implemented yet')
+		self._dropout = Dropout(dropout_prob)
+		self._attention_type = attention_type
+		self._vocab_size = max_relative_position * 2 + 1
+		self._rel_embed_length = block_length * 4
+		self._max_relative_position_unmasked = max_relative_position * 2 - 1
+		self._norm_layer = nn.LayerNorm(value_depth)
+		self._token_type_embedding = nn.Embedding(type_vocab_size, input_size)
+		self._position_embedding = nn.Embedding(max_position_embeddings, input_size)
+		self._key_embedding = None
+		self._value_embedding = None
+		self._relative_key_embeddings = None
+		self._relative_value_embeddings = None
+		if attention_type == 'dot_product_relative':
+			self._key_embedding = nn.Parameter(torch.randn(self._vocab_size, self._key_depth))
+			self._value_embedding = nn.Parameter(torch.randn(self._vocab_size, self._value_depth))
+		elif attention_type == 'dot_product_unmasked_relative_v2':
+			if heads_share_relative_embedding:
+				self._relative_key_embeddings = nn.Parameter(torch.randn(self._rel_embed_length, self._key_depth))
+				self._relative_value_embeddings = nn.Parameter(torch.randn(self._rel_embed_length, self._value_depth))
+			else:
+				self._relative_key_embeddings = nn.Parameter(
+					torch.randn(self._num_heads, self._rel_embed_length, self._key_depth))
+				self._relative_value_embeddings = nn.Parameter(
+					torch.randn(self._num_heads, self._rel_embed_length, self._value_depth))
+		elif attention_type == 'local_relative_mask_right':
+			if heads_share_relative_embedding:
+				self._relative_key_embeddings = nn.Parameter(torch.randn(self._rel_embed_length, self._key_depth))
+				self._relative_value_embeddings = nn.Parameter(torch.randn(self._rel_embed_length, self._value_depth))
+			else:
+				self._relative_key_embeddings = nn.Parameter(
+					torch.randn(self._num_heads, self._rel_embed_length, self._key_depth))
+				self._relative_value_embeddings = nn.Parameter(
+					torch.randn(self._num_heads, self._rel_embed_length, self._value_depth))
+		elif attention_type == 'dot_product_unmasked_self_attention_relative_v2':
+			if heads_share_relative_embedding:
+				self._relative_key_embeddings = nn.Parameter(
+					torch.randn(self._max_relative_position_unmasked, self._key_depth))
+				self._relative_value_embeddings = nn.Parameter(
+					torch.randn(self._max_relative_position_unmasked, self._value_depth))
+			else:
+				self._relative_key_embeddings = nn.Parameter(
+					torch.randn(self._num_heads, self._max_relative_position_unmasked, self._key_depth))
+				self._relative_value_embeddings = nn.Parameter(
+					torch.randn(self._num_heads, self._max_relative_position_unmasked, self._value_depth))
 
 
 	def get_input_dim(self):
-		return self._input_dim
+		return self._input_size
 
 
 	def get_output_dim(self):
-		return self._output_dim
+		return self._value_depth
 
 
 	@overrides
@@ -99,10 +143,9 @@ class MultiHeadAttention(Seq2SeqEncoder):
 
 	@overrides
 	def forward(self,  # pylint: disable=arguments-differ
-				inputs: torch.Tensor,
-				memory: torch.Tensor = None,
-				encoder_self_attention_bias: torch.Tensor = None,
-				mask: torch.LongTensor = None) -> torch.FloatTensor:
+				tokens: Dict[str, torch.LongTensor],
+				input_mask: torch.LongTensor,
+				segment_ids: torch.LongTensor) -> torch.FloatTensor:
 		"""
 		Parameters
 		----------
@@ -116,18 +159,34 @@ class MultiHeadAttention(Seq2SeqEncoder):
 		A tensor of shape (batch_size, timesteps, output_projection_dim),
 		where output_projection_dim = input_dim by default.
 		"""
-		outputs = common_attention.multihead_attention(inputs,
-													   memory,
+		embedded_tokens = self._text_field_embedder(tokens)
+		embedded_tokens = common_attention.embedding_postprocessor(embedded_tokens,
+																   input_mask,
+																   token_type_ids=segment_ids,
+																   use_token_type=True,
+																   token_type_embedding=self._token_type_embedding,
+																   use_position_embeddings=True,
+																   position_embedding=self._position_embedding,
+																   norm_layer=self._norm_layer,
+																   dropout=self._dropout)
+		encoder_self_attention_bias = common_attention.create_attention_mask_from_input_mask(embedded_tokens,
+																							 input_mask)
+		outputs = common_attention.multihead_attention(embedded_tokens,
+													   embedded_tokens,
 													   encoder_self_attention_bias,
 													   self._key_depth,
 													   self._value_depth,
 													   self._output_dim,
 													   self._num_heads,
 													   self._attention_dropout,
-													   relative_embeddings=self._relative_embeddings,
+													   key_embedding=self._key_embedding,
+													   value_embedding=self._value_embedding,
+													   relative_key_embeddings=self._relative_key_embeddings,
+													   relative_value_embeddings=self._relative_value_embeddings,
 													   key_projection=self._key_projection,
 													   value_projection=self._value_projection,
 													   query_projection=self._query_projection,
+													   attention_type=self._attention_type,
 													   heads_share_relative_embedding=self._heads_share_relative_embedding,
 													   add_relative_to_values=self._add_relative_to_values,
 													   block_length=self._block_length,
