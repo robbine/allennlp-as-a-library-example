@@ -3,7 +3,7 @@ import unittest
 
 import torch
 
-from modules.layers.common_attention import get_relative_embeddings_left_right, \
+from my_library.modules.layers.common_attention import get_relative_embeddings_left_right, \
 	dot_product_unmasked_self_attention_relative_v2
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name

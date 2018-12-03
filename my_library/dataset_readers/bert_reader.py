@@ -5,7 +5,7 @@ import random
 import time
 
 from allennlp.common.file_utils import cached_path
-from allennlp.data import Field
+from allennlp.data import Field, Token
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.fields import TextField, ArrayField, LabelField
 from allennlp.data.instance import Instance
@@ -44,6 +44,12 @@ class BertDatasetReader(DatasetReader):
 				 max_predictions_per_seq: int, lazy: bool = False, tokenizer: Tokenizer = None,
 				 token_indexers: Dict[str, TokenIndexer] = None) -> None:
 		super().__init__(lazy)
+		self.max_seq_length = max_seq_length
+		self.dupe_factor = dupe_factor
+		self.short_seq_prob = short_seq_prob
+		self.masked_lm_prob = masked_lm_prob
+		self.max_predictions_per_seq = max_predictions_per_seq
+
 		self._tokenizer = tokenizer or WordTokenizer()
 		self._token_indexers = token_indexers or {"tokens": BertSingleIdTokenIndexer()}
 		self.rng = random.Random(time.time())
@@ -65,11 +71,11 @@ class BertDatasetReader(DatasetReader):
 				# Empty lines are used as document delimiters
 				if not line:
 					all_documents.append([])
-				tokens = self.tokenizer.tokenize(line)
+				tokens = self._tokenizer.tokenize(line)
 				if tokens:
 					all_documents[-1].append(tokens)
 					for token in tokens:
-						dictionary[token] = dictionary.get(token, 0) + 1
+						dictionary[token.text] = dictionary.get(token.text, 0) + 1
 
 		all_documents = [x for x in all_documents if x]
 		self.rng.shuffle(all_documents)
@@ -89,19 +95,19 @@ class BertDatasetReader(DatasetReader):
 
 		tokens = []
 		segment_ids = []
-		tokens.append("[CLS]")
+		tokens.append(Token("[CLS]"))
 		segment_ids.append(0)
 		for token in tokens_a:
 			tokens.append(token)
 			segment_ids.append(0)
 
-		tokens.append("[SEP]")
+		tokens.append(Token("[SEP]"))
 		segment_ids.append(0)
 
 		for token in tokens_b:
 			tokens.append(token)
 			segment_ids.append(1)
-		tokens.append("[SEP]")
+		tokens.append(Token("[SEP]"))
 		segment_ids.append(1)
 		input_mask = [1] * len(tokens)
 		(tokens, masked_lm_positions,
@@ -132,7 +138,7 @@ class BertDatasetReader(DatasetReader):
 		# sequences to minimize the mismatch between pre-training and fine-tuning.
 		# The `target_seq_length` is just a rough target however, whereas
 		# `max_seq_length` is a hard limit.
-		target_seq_length = self.max_num_tokens
+		target_seq_length = max_num_tokens
 		if self.rng.random() < self.short_seq_prob:
 			target_seq_length = self.rng.randint(2, max_num_tokens)
 
@@ -208,7 +214,7 @@ class BertDatasetReader(DatasetReader):
 
 		cand_indexes = []
 		for (i, token) in enumerate(tokens):
-			if token == "[CLS]" or token == "[SEP]":
+			if token.text == "[CLS]" or token.text == "[SEP]":
 				continue
 			cand_indexes.append(i)
 
@@ -233,7 +239,7 @@ class BertDatasetReader(DatasetReader):
 			masked_token = None
 			# 80% of the time, replace with [MASK]
 			if self.rng.random() < 0.8:
-				masked_token = "[MASK]"
+				masked_token = Token("[MASK]")
 			else:
 				# 10% of the time, keep original
 				if self.rng.random() < 0.5:
@@ -243,7 +249,7 @@ class BertDatasetReader(DatasetReader):
 					if dictionary is None:
 						masked_token = tokens[index]
 					else:
-						masked_token = random.choice(list(dictionary.items()))[0]
+						masked_token = Token(random.choice(list(dictionary.items()))[0])
 
 			output_tokens[index] = masked_token
 

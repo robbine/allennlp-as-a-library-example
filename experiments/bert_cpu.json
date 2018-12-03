@@ -1,0 +1,85 @@
+{
+  "dataset_reader": {
+    "type": "bert_reader",
+    "max_seq_length": 512,
+    "dupe_factor": 5,
+    "short_seq_prob": 0.1,
+    "masked_lm_prob": 0.15,
+    "max_predictions_per_seq": 20,
+    "lazy": true,
+    "tokenizer": {
+      "type": "word",
+      "word_splitter": {
+        "type": "just_spaces"
+      }
+    },
+    "token_indexers": {
+      "tokens": {
+        "type": "single_id",
+        "lowercase_tokens": true
+      }
+    }
+  },
+  "train_data_path": "/Users/songhan/data/bert_sample.txt",
+  "validation_data_path": "/Users/songhan/data/bert_sample_validate.txt",
+  "model": {
+    "type": "bert",
+    "hidden_size": 11,
+    "text_field_embedder": {
+      "type": "basic_v2",
+      "tokens": {
+        "type": "embedding_v2",
+        "pretrained_file": "/Users/songhan/Downloads/glove.840B.300d.zip",
+        "embedding_dim": 300,
+        "trainable": false
+      }
+    },
+    "masked_lm_feedforward": {
+      "input_dim": 100,
+      "num_layers": 1,
+      "hidden_dims": 13,
+      "activations": "relu",
+      "dropout": 0.2
+    },
+    "next_sentence_feedforward": {
+      "input_dim": 100,
+      "num_layers": 1,
+      "hidden_dims": 13,
+      "activations": "relu",
+      "dropout": 0.2
+    },
+    "transformer": {
+      "type": "multi_head_attention",
+      "num_heads": 8,
+	  "input_size": 17,
+      "memory_size": 19,
+      "key_depth": 24,
+      "value_depth": 24,
+      "max_position_embeddings": 512,
+      "type_vocab_size": 3,
+      "attention_dropout_prob": 0.1,
+      "dropout_prob": 0.1,
+      "attention_type": "dot_product"
+    },
+     "initializer": [
+      [".*linear_layers.*weight", {"type": "xavier_normal"}],
+      [".*token_embedder_tokens\\._projection.*weight", {"type": "xavier_normal"}]
+     ]
+   },
+  "iterator": {
+    "type": "bucket",
+    "sorting_keys": [["tokens", "num_tokens"]],
+    "batch_size": 16
+  },
+
+  "trainer": {
+    "num_epochs": 4,
+    "patience": 2,
+    "cuda_device": -1,
+    "grad_clipping": 5.0,
+    "validation_metric": "+accuracy",
+    "optimizer": {
+      "type": "adagrad"
+    }
+  }
+}

@@ -107,8 +107,8 @@ class EmbeddingV2(TokenEmbedder):
         if self.padding_index is not None:
             self.weight.data[self.padding_index].fill_(0)
 
-	def get_embedding_weight(self):
-		return self.weight
+    def get_embedding_weight(self):
+        return self.weight
 
     @overrides
     def get_output_dim(self) -> int:

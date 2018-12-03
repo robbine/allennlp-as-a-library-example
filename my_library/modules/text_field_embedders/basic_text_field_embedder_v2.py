@@ -89,8 +89,8 @@ class BasicTextFieldEmbedderV2(TextFieldEmbedder):
             embedded_representations.append(token_vectors)
         return torch.cat(embedded_representations, dim=-1)
 
-	def get_embedding_by_name(self, key):
-		embedder = getattr(self, 'token_embedder_{}'.format(key))
+    def get_embedding_by_name(self, key):
+        embedder = getattr(self, 'token_embedder_{}'.format(key))
         return embedder.get_embedding_weight()
 
     # This is some unusual logic, it needs a custom from_params.

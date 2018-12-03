@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from torch.nn import Dropout, Linear
 
-from modules.layers import common_attention
+from my_library.modules.layers import common_attention
 
 
 @Seq2SeqEncoder.register("multi_head_attention")
@@ -49,7 +49,6 @@ class MultiHeadAttention(Seq2SeqEncoder):
 				 value_depth: int,
 				 max_position_embeddings: int = 512,
 				 type_vocab_size: int = 3,
-				 output_projection_dim: int = None,
 				 attention_dropout_prob: float = 0.1,
 				 dropout_prob: float = 0.1,
 				 attention_type: str = 'dot_product',
@@ -64,7 +63,7 @@ class MultiHeadAttention(Seq2SeqEncoder):
 		self._num_heads = num_heads
 		self._input_size = input_size
 		self._memory_size = memory_size
-		self._output_dim = output_projection_dim or input_size
+		self._output_dim = input_size
 		self._key_depth = key_depth
 		self._value_depth = value_depth
 
@@ -156,8 +155,7 @@ class MultiHeadAttention(Seq2SeqEncoder):
 	
 		Returns
 		-------
-		A tensor of shape (batch_size, timesteps, output_projection_dim),
-		where output_projection_dim = input_dim by default.
+		A tensor of shape (batch_size, timesteps, input_dim),
 		"""
 		embedded_tokens = self._text_field_embedder(tokens)
 		embedded_tokens = common_attention.embedding_postprocessor(embedded_tokens,
