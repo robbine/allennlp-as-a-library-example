@@ -33,9 +33,6 @@ class MultiHeadAttention(Seq2SeqEncoder):
 	values_dim : ``int``, required.
 		The total dimension which the input is projected to for representing the values,
 		which are combined using the attention. Must be divisible by ``num_heads``.
-	output_projection_dim : ``int``, optional (default = None)
-		The dimensionality of the final output projection. If this is not passed
-		explicitly, the projection has size `input_size`.
 	attention_dropout_prob : ``float``, optional (default = 0.1).
 		The dropout probability applied to the normalised attention
 		distributions.
@@ -50,12 +47,12 @@ class MultiHeadAttention(Seq2SeqEncoder):
 				 max_position_embeddings: int = 512,
 				 type_vocab_size: int = 3,
 				 attention_dropout_prob: float = 0.1,
-				 dropout_prob: float = 0.1,
 				 attention_type: str = 'dot_product',
-				 max_relative_position=None,
+				 max_relative_position=5,
 				 heads_share_relative_embedding=True,
 				 add_relative_to_values=False,
 				 block_length=64,
+				 block_width=64,
 				 ) -> None:
 
 		super(MultiHeadAttention, self).__init__()
@@ -78,21 +75,21 @@ class MultiHeadAttention(Seq2SeqEncoder):
 		self._key_projection = Linear(memory_size, key_depth)
 		self._value_projection = Linear(memory_size, value_depth)
 		self._query_projection = Linear(input_size, key_depth)
-		self._scale = (input_size // num_heads) ** 0.5
-		self._output_projection = Linear(value_depth, self._output_dim)
 		self._attention_dropout = Dropout(attention_dropout_prob)
-		self._dropout = Dropout(dropout_prob)
+
+
 		self._attention_type = attention_type
 		self._vocab_size = max_relative_position * 2 + 1
 		self._rel_embed_length = block_length * 4
 		self._max_relative_position_unmasked = max_relative_position * 2 - 1
-		self._norm_layer = nn.LayerNorm(value_depth)
-		self._token_type_embedding = nn.Embedding(type_vocab_size, input_size)
-		self._position_embedding = nn.Embedding(max_position_embeddings, input_size)
 		self._key_embedding = None
 		self._value_embedding = None
 		self._relative_key_embeddings = None
 		self._relative_value_embeddings = None
+		self._heads_share_relative_embedding = heads_share_relative_embedding
+		self._add_relative_to_values = add_relative_to_values
+		self._block_length = block_length
+		self._block_width = block_width
 		if attention_type == 'dot_product_relative':
 			self._key_embedding = nn.Parameter(torch.randn(self._vocab_size, self._key_depth))
 			self._value_embedding = nn.Parameter(torch.randn(self._vocab_size, self._value_depth))
@@ -142,9 +139,9 @@ class MultiHeadAttention(Seq2SeqEncoder):
 
 	@overrides
 	def forward(self,  # pylint: disable=arguments-differ
-				tokens: Dict[str, torch.LongTensor],
+				embedded_tokens: torch.FloatTensor,
 				input_mask: torch.LongTensor,
-				segment_ids: torch.LongTensor) -> torch.FloatTensor:
+				encoder_self_attention_bias: torch.LongTensor) -> torch.FloatTensor:
 		"""
 		Parameters
 		----------
@@ -157,18 +154,6 @@ class MultiHeadAttention(Seq2SeqEncoder):
 		-------
 		A tensor of shape (batch_size, timesteps, input_dim),
 		"""
-		embedded_tokens = self._text_field_embedder(tokens)
-		embedded_tokens = common_attention.embedding_postprocessor(embedded_tokens,
-																   input_mask,
-																   token_type_ids=segment_ids,
-																   use_token_type=True,
-																   token_type_embedding=self._token_type_embedding,
-																   use_position_embeddings=True,
-																   position_embedding=self._position_embedding,
-																   norm_layer=self._norm_layer,
-																   dropout=self._dropout)
-		encoder_self_attention_bias = common_attention.create_attention_mask_from_input_mask(embedded_tokens,
-																							 input_mask)
 		outputs = common_attention.multihead_attention(embedded_tokens,
 													   embedded_tokens,
 													   encoder_self_attention_bias,
@@ -190,8 +175,4 @@ class MultiHeadAttention(Seq2SeqEncoder):
 													   block_length=self._block_length,
 													   block_width=self._block_width,
 													   )
-
-		# Project back to original input size.
-		# shape (batch_size, timesteps, input_size)
-		outputs = self._output_projection(outputs)
 		return outputs

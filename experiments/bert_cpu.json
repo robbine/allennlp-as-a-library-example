@@ -24,7 +24,7 @@
   "validation_data_path": "/Users/songhan/data/bert_sample_validate.txt",
   "model": {
     "type": "bert",
-    "hidden_size": 11,
+    "hidden_size": 300,
     "text_field_embedder": {
       "type": "basic_v2",
       "tokens": {
@@ -35,24 +35,28 @@
       }
     },
     "masked_lm_feedforward": {
-      "input_dim": 100,
+      "input_dim": 300,
       "num_layers": 1,
-      "hidden_dims": 13,
+      "hidden_dims": 300,
       "activations": "relu",
       "dropout": 0.2
     },
     "next_sentence_feedforward": {
-      "input_dim": 100,
+      "input_dim": 300,
       "num_layers": 1,
-      "hidden_dims": 13,
+      "hidden_dims": 2,
       "activations": "relu",
       "dropout": 0.2
     },
     "transformer": {
-      "type": "multi_head_attention",
+      "type": "transformer",
+      "num_hidden_layers": 12,
+      "hidden_dim": 300,
+      "intermediate_size": 17,
+      "intermediate_act_fn": "relu",
       "num_heads": 8,
-	  "input_size": 17,
-      "memory_size": 19,
+      "input_size": 300,
+      "memory_size": 300,
       "key_depth": 24,
       "value_depth": 24,
       "max_position_embeddings": 512,
@@ -61,17 +65,31 @@
       "dropout_prob": 0.1,
       "attention_type": "dot_product"
     },
-     "initializer": [
-      [".*linear_layers.*weight", {"type": "xavier_normal"}],
-      [".*token_embedder_tokens\\._projection.*weight", {"type": "xavier_normal"}]
-     ]
-   },
+    "initializer": [
+      [
+        ".*linear_layers.*weight",
+        {
+          "type": "xavier_normal"
+        }
+      ],
+      [
+        ".*token_embedder_tokens\\._projection.*weight",
+        {
+          "type": "xavier_normal"
+        }
+      ]
+    ]
+  },
   "iterator": {
     "type": "bucket",
-    "sorting_keys": [["tokens", "num_tokens"]],
+    "sorting_keys": [
+      [
+        "tokens",
+        "num_tokens"
+      ]
+    ],
     "batch_size": 16
   },
-
   "trainer": {
     "num_epochs": 4,
     "patience": 2,

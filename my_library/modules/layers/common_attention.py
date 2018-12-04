@@ -1135,7 +1135,7 @@ def embedding_postprocessor(input_tensor,
 
 	if use_position_embeddings:
 		range_tensor = util.get_range_vector(seq_length, util.get_device_of(input_mask_tensor))
-		range_tensor = range_tensor.view(1, -1)
+		range_tensor = range_tensor.view(1, -1).long()
 		output += position_embedding(input_mask_tensor * range_tensor)
 
 	output = layer_norm_and_dropout(output, norm_layer, dropout)
@@ -1178,4 +1178,4 @@ def create_attention_mask_from_input_mask(from_tensor, to_mask):
 
 	# Here we broadcast along two dimensions to create the mask.
 	mask = broadcast_ones * to_mask
-	return mask
+	return mask.unsqueeze(1)

@@ -31,7 +31,7 @@ class Bert(Model):
 		self._feedforward = nn.Linear(text_field_embedder.get_output_dim(), hidden_size)
 		self._next_sentence_feedforward = next_sentence_feedforward
 		self._masked_lm_feedforward = masked_lm_feedforward
-		self._norm_layer = nn.LayerNorm(text_field_embedder.get_output_dim())
+		self._norm_layer = nn.LayerNorm(masked_lm_feedforward.get_output_dim())
 		self._masked_lm_accuracy = CategoricalAccuracy()
 		self._next_sentence_accuracy = CategoricalAccuracy()
 		self._loss = torch.nn.CrossEntropyLoss()
@@ -53,12 +53,12 @@ class Bert(Model):
 		first_token_tensor = transformed_tokens[:, 0, :]
 		pooled_output = torch.tanh(self._feedforward(first_token_tensor))
 		output_dict = {}
-		embedding_table = self._text_field_embedder.get_embedding_by_name('bert')
+		embedding_table = self._text_field_embedder.get_embedding_by_name('tokens')
 		if masked_lm_labels is not None:
 			(masked_lm_loss,
 			 masked_lm_example_loss, masked_lm_log_probs) = get_masked_lm_output(
 				transformed_tokens, self._norm_layer, self._masked_lm_feedforward, embedding_table,
-				masked_lm_positions, masked_lm_labels['bert'], masked_lm_weights)
+				masked_lm_positions.long(), masked_lm_labels['tokens'], masked_lm_weights)
 
 			(next_sentence_loss, next_sentence_example_loss,
 			 next_sentence_log_probs) = get_next_sentence_output(
@@ -72,27 +72,28 @@ class Bert(Model):
 			output_dict['next_sentence_loss'] = next_sentence_loss
 			output_dict['next_sentence_example_loss'] = next_sentence_example_loss
 			output_dict['next_sentence_log_probs'] = next_sentence_log_probs
-			self._masked_lm_accuracy(masked_lm_log_probs, masked_lm_labels)
+			self._masked_lm_accuracy(masked_lm_log_probs, masked_lm_labels["tokens"].view(-1))
 			self._next_sentence_accuracy(next_sentence_log_probs, next_sentence_labels)
 		return output_dict
 
 	def get_metrics(self, reset: bool = False) -> Dict[str, float]:
 		return {
-			'masked_lm_accuracy': self._masked_lm_accuracy.get_metric(reset),
+			'accuracy': self._masked_lm_accuracy.get_metric(reset),
 			'next_sentence_accuracy': self._next_sentence_accuracy.get_metric(reset)
 		}
 
 
 def get_masked_lm_output(input_tensor, norm_layer, masked_lm_feedforward, output_weights, positions,
-						 vocab_size, label_ids, label_weights):
+						 label_ids, label_weights):
 	"""Get loss and log probs for the masked LM."""
 	input_tensor = gather_indexes(input_tensor, positions)
 	input_tensor = masked_lm_feedforward(input_tensor)
 	input_tensor = norm_layer(input_tensor)
 	logits = torch.matmul(input_tensor, output_weights.transpose(0, 1))
 	log_probs = torch.nn.functional.softmax(logits, dim=-1)
-	label_ids = label_ids.view(-1)
+	label_ids = label_ids.view(-1, 1)
 	label_weights = label_weights.view(-1)
+	vocab_size = output_weights.size(0)
 	one_hot_labels = torch.FloatTensor(label_ids.size(0), vocab_size)
 	one_hot_labels.zero_()
 	one_hot_labels.scatter_(1, label_ids, 1)
@@ -112,7 +113,7 @@ def get_next_sentence_output(input_tensor, next_sentence_feedforward, labels):
 	# "random sentence". This weight matrix is not used after pre-training.
 	logits = next_sentence_feedforward(input_tensor)
 	log_probs = torch.nn.functional.softmax(logits, dim=-1)
-	labels = labels.view(-1)
+	labels = labels.view(-1, 1)
 	one_hot_labels = torch.FloatTensor(labels.size(0), 2)
 	one_hot_labels.zero_()
 	one_hot_labels.scatter_(1, labels, 1)
@@ -128,7 +129,7 @@ def gather_indexes(sequence_tensor, positions):
 	seq_length = sequence_shape[1]
 	width = sequence_shape[2]
 	flat_offsets = util.get_range_vector(batch_size, util.get_device_of(sequence_tensor)) * seq_length
-	flat_offsets = flat_offsets.unsqueeze(-1)
+	flat_offsets = flat_offsets.unsqueeze(-1).long()
 	flat_positions = (positions + flat_offsets).view(-1)
 	flat_sequence_tensor = sequence_tensor.view(batch_size * seq_length, width)
 	output_tensor = torch.index_select(flat_sequence_tensor, 0, flat_positions)
