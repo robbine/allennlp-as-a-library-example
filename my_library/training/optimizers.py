@@ -41,7 +41,7 @@ SCHEDULES = {
     'warmup_linear':warmup_linear,
 }
 
-@Optimizer.register('bert_adam')
+@Optimizer.register('bert_adam_v2')
 class BertAdam(torch.optim.Optimizer):
     """Implements BERT version of Adam algorithm with weight decay fix.
     Params:
