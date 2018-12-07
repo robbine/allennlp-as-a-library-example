@@ -60,7 +60,6 @@ class MultiHeadAttention(Seq2SeqEncoder):
 		self._num_heads = num_heads
 		self._input_size = input_size
 		self._memory_size = memory_size
-		self._output_dim = input_size
 		self._key_depth = key_depth
 		self._value_depth = value_depth
 
@@ -76,7 +75,6 @@ class MultiHeadAttention(Seq2SeqEncoder):
 		self._value_projection = Linear(memory_size, value_depth)
 		self._query_projection = Linear(input_size, key_depth)
 		self._attention_dropout = Dropout(attention_dropout_prob)
-
 
 		self._attention_type = attention_type
 		self._vocab_size = max_relative_position * 2 + 1
@@ -159,7 +157,6 @@ class MultiHeadAttention(Seq2SeqEncoder):
 													   encoder_self_attention_bias,
 													   self._key_depth,
 													   self._value_depth,
-													   self._output_dim,
 													   self._num_heads,
 													   self._attention_dropout,
 													   key_embedding=self._key_embedding,

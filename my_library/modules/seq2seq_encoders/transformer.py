@@ -1,16 +1,23 @@
 from typing import List
-
+import math
 from allennlp.nn import Activation
 from overrides import overrides
 import torch
 import torch.nn as nn
 from torch.nn import Dropout
 from allennlp.modules.feedforward import FeedForward
-from allennlp.modules.layer_norm import LayerNorm
 from allennlp.modules.seq2seq_encoders.seq2seq_encoder import Seq2SeqEncoder
 
 from my_library.modules.layers import common_attention
 from my_library.modules.seq2seq_encoders.multi_head_attention import MultiHeadAttention
+
+
+def gelu(x):
+	"""Implementation of the gelu activation function.
+		For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
+		0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
+	"""
+	return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
 
 
 @Seq2SeqEncoder.register("transformer")
@@ -62,7 +69,6 @@ class Transformer(Seq2SeqEncoder):
 
 	def __init__(self,
 				 num_hidden_layers: int,
-				 hidden_dim: int,
 				 intermediate_size: int,
 				 intermediate_act_fn: str,
 				 num_heads: int,
@@ -81,20 +87,23 @@ class Transformer(Seq2SeqEncoder):
 				 block_length=64,
 				 block_width=64) -> None:
 		super(Transformer, self).__init__()
+		hidden_size = input_size
+
 		self._norm_layer = nn.LayerNorm(input_size)
 		self._token_type_embedding = nn.Embedding(type_vocab_size, input_size)
 		self._position_embedding = nn.Embedding(max_position_embeddings, input_size)
 		self._dropout = Dropout(dropout_prob)
+		if intermediate_act_fn == 'gelu':
+			self._activation = gelu
+		else:
+			self._activation = Activation.by_name(intermediate_act_fn)()
 		self._attention_layers: List[MultiHeadAttention] = []
-		self._layer_norm_layers: List[LayerNorm] = []
+		self._layer_norm_output_layers = []
+		self._layer_norm_layers: List[nn.LayerNorm] = []
 		self._feedforward_layers: List[FeedForward] = []
 		self._feedforward_output_layers: List[FeedForward] = []
 		self._feedforward_intermediate_layers: List[FeedForward] = []
-		self._feed_forward_layer_norm_layers: List[LayerNorm] = []
 
-		if input_size != hidden_dim:
-			raise ValueError("The width of the input tensor (%d) != hidden size (%d)" %
-							 (input_size, hidden_dim))
 		for i in range(num_hidden_layers):
 			self_attention = MultiHeadAttention(num_heads,
 												input_size,
@@ -110,32 +119,26 @@ class Transformer(Seq2SeqEncoder):
 												add_relative_to_values,
 												block_length,
 												block_width)
-			layer_norm = LayerNorm(hidden_dim)
-			feedforward_output = FeedForward(self_attention.get_output_dim(), num_layers=1,
-											 hidden_dims=hidden_dim, activations=Activation.by_name("linear")(),
-											 dropout=dropout_prob)
-			feedforward_intermediate = FeedForward(hidden_dim, num_layers=1,
-												   activations=Activation.by_name(intermediate_act_fn)(),
-												   hidden_dims=intermediate_size)
-			feedforward = FeedForward(intermediate_size, num_layers=1,
-									  hidden_dims=hidden_dim, activations=Activation.by_name("linear")(),
-									  dropout=dropout_prob)
-			feedforward_layer_norm = LayerNorm(feedforward.get_output_dim())
+			layer_norm_output = nn.LayerNorm(hidden_size)
+			layer_norm = nn.LayerNorm(hidden_size)
+			feedforward_output = nn.Linear(self_attention.get_output_dim(), hidden_size)
+			feedforward_intermediate = nn.Linear(hidden_size, intermediate_size)
+			feedforward = nn.Linear(intermediate_size, hidden_size)
 			self.add_module(f"self_attention_{i}", self_attention)
+			self.add_module(f"layer_norm_output_{i}", layer_norm_output)
 			self.add_module(f"layer_norm_{i}", layer_norm)
 			self.add_module(f"feedforward_{i}", feedforward)
-			self.add_module(f"feedforward_layer_norm_{i}", feedforward_layer_norm)
 			self.add_module(f"feedforward_output_{i}", feedforward_output)
 			self.add_module(f"feedforward_intermediate_{i}", feedforward_intermediate)
 			self._attention_layers.append(self_attention)
+			self._layer_norm_output_layers.append(layer_norm_output)
 			self._layer_norm_layers.append(layer_norm)
 			self._feedforward_layers.append(feedforward)
 			self._feedforward_output_layers.append(feedforward_output)
 			self._feedforward_intermediate_layers.append(feedforward_intermediate)
-			self._feed_forward_layer_norm_layers.append(feedforward_layer_norm)
 
 		self._input_dim = input_size
-		self._output_dim = self._attention_layers[-1].get_output_dim()
+		self._output_dim = hidden_size
 
 	@overrides
 	def get_input_dim(self) -> int:
@@ -169,22 +172,23 @@ class Transformer(Seq2SeqEncoder):
 			 feedforward_output,
 			 feedforward_intermediate,
 			 feedforward,
-			 feedforward_layer_norm,
+			 layer_norm_output,
 			 layer_norm) in zip(self._attention_layers,
 								self._feedforward_output_layers,
 								self._feedforward_intermediate_layers,
 								self._feedforward_layers,
-								self._feed_forward_layer_norm_layers,
+								self._layer_norm_output_layers,
 								self._layer_norm_layers):
 			layer_input = prev_output
 			attention_output = attention(layer_input, input_mask, encoder_self_attention_bias)
-			attention_output = feedforward_output(attention_output)
-			attention_output = layer_norm(attention_output + layer_input)
-			intermediate_output = feedforward_intermediate(attention_output)
+			attention_output = self._dropout(feedforward_output(attention_output))
+			attention_output = layer_norm_output(attention_output + layer_input)
+			intermediate_output = self._activation(feedforward_intermediate(attention_output))
 			# Project output of attention encoder through a feedforward
 			# network and back to the input size for the next layer.
 			# shape (batch_size, timesteps, input_size)
-			layer_output = layer_norm(feedforward(intermediate_output) + attention_output)
+			layer_output = self._dropout(feedforward(intermediate_output))
+			layer_output = layer_norm(layer_output + attention_output)
 			prev_output = layer_output
 
 		return prev_output

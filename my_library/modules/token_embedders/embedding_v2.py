@@ -318,7 +318,7 @@ def _read_embeddings_from_text_file(file_uri: str,
             embedding_matrix[i] = torch.FloatTensor(embeddings[token])
             num_tokens_found += 1
         else:
-            logger.debug("Token %s was not found in the embedding file. Initialising randomly.", token)
+            logger.info("Token %s was not found in the embedding file. Initialising randomly.", token)
 
     logger.info("Pretrained embeddings were found for %d out of %d tokens",
                 num_tokens_found, vocab_size)

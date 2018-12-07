@@ -923,7 +923,6 @@ def multihead_attention(query_antecedent,
 						bias,
 						total_key_depth,
 						total_value_depth,
-						output_depth,
 						num_heads,
 						dropout,
 						key_embedding=None,
@@ -937,7 +936,6 @@ def multihead_attention(query_antecedent,
 						max_relative_position=None,
 						heads_share_relative_embedding=False,
 						add_relative_to_values=False,
-						image_shapes=None,
 						block_length=128,
 						block_width=128):
 	"""Multihead scaled-dot-product attention with input/output transformations.
@@ -947,7 +945,6 @@ def multihead_attention(query_antecedent,
 	  bias: bias Tensor (see attention_bias())
 	  total_key_depth: an integer
 	  total_value_depth: an integer
-	  output_depth: an integer
 	  num_heads: an integer dividing total_key_depth and total_value_depth
 	  dropout_rate: a floating point number
 	  attention_type: a string, either "dot_product", "dot_product_relative",
@@ -960,8 +957,6 @@ def multihead_attention(query_antecedent,
 	  heads_share_relative_embedding: boolean to share relative embeddings
 	  add_relative_to_values: a boolean for whether to add relative component to
 							  values.
-	  image_shapes: optional tuple of integer scalars.
-					see comments for attention_image_summary()
 	  block_length: an integer - relevant for "local_mask_right"
 	  block_width: an integer - relevant for "local_unmasked"
 	  q_filter_width: An integer specifying how wide you want the query to be.
