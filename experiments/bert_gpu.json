@@ -20,8 +20,8 @@
       }
     }
   },
-  "train_data_path": "/Users/songhan/data/bert_sample.txt",
-  "validation_data_path": "/Users/songhan/data/bert_sample_validate.txt",
+  "train_data_path": "/home/icepine.hans/data/bert_sample.txt",
+  "validation_data_path": "/home/icepine.hans/data/bert_sample_validate.txt",
   "model": {
     "type": "bert",
     "text_field_embedder": {
