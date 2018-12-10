@@ -1169,7 +1169,6 @@ def create_attention_mask_from_input_mask(from_tensor, to_mask):
 	# tokens so we create a tensor of all ones.
 	#
 	# `broadcast_ones` = [batch_size, from_seq_length, 1]
-	util.get_device_of()
 	broadcast_ones = torch.ones(batch_size, from_seq_length, 1, device=util.get_device_of(to_mask)).float()
 	# Here we broadcast along two dimensions to create the mask.
 	mask = broadcast_ones * to_mask
