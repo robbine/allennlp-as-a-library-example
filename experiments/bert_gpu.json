@@ -20,15 +20,15 @@
       }
     }
   },
-  "train_data_path": "/Users/songhan/data/bert_sample.txt",
-  "validation_data_path": "/Users/songhan/data/bert_sample_validate.txt",
+  "train_data_path": "/home/icepine.hans/data/bert_sample.txt",
+  "validation_data_path": "/home/icepine.hans/data/bert_sample_validate.txt",
   "model": {
     "type": "bert",
     "text_field_embedder": {
       "type": "basic_v2",
       "tokens": {
         "type": "embedding_v2",
-        "pretrained_file": "/Users/songhan/Downloads/glove.840B.300d.zip",
+        "pretrained_file": "/home/icepine.hans/Downloads/glove.840B.300d.zip",
         "embedding_dim": 300,
         "trainable": true
       }
