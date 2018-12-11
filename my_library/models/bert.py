@@ -93,7 +93,7 @@ def get_masked_lm_output(input_tensor, norm_layer, bias, masked_lm_feedforward, 
 	label_ids = label_ids.view(-1, 1)
 	label_weights = label_weights.view(-1)
 	vocab_size = output_weights.size(0)
-	if label_ids.is_cuda():
+	if label_ids.is_cuda:
 		one_hot_labels = torch.cuda.FloatTensor(label_ids.size(0), vocab_size)
 	else:
 		one_hot_labels = torch.FloatTensor(label_ids.size(0), vocab_size)
