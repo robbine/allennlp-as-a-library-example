@@ -116,7 +116,10 @@ def get_next_sentence_output(input_tensor, next_sentence_feedforward, bias, labe
 	logits = next_sentence_feedforward(input_tensor) + bias
 	log_probs = torch.nn.functional.softmax(logits, dim=-1)
 	labels = labels.view(-1, 1)
-	one_hot_labels = torch.FloatTensor(labels.size(0), 2)
+	if labels.is_cuda:
+		one_hot_labels = torch.cuda.FloatTensor(labels.size(0), 2)
+	else:
+		one_hot_labels = torch.FloatTensor(labels.size(0), 2)
 	one_hot_labels.zero_()
 	one_hot_labels.scatter_(1, labels, 1)
 	per_example_loss = -(one_hot_labels * log_probs).sum(-1)
