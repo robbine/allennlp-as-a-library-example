@@ -93,7 +93,7 @@ def get_masked_lm_output(input_tensor, norm_layer, bias, masked_lm_feedforward, 
 	label_ids = label_ids.view(-1, 1)
 	label_weights = label_weights.view(-1)
 	vocab_size = output_weights.size(0)
-	one_hot_labels = torch.FloatTensor(label_ids.size(0), vocab_size)
+	one_hot_labels = torch.FloatTensor(label_ids.size(0), vocab_size, device=util.get_device_of(label_ids))
 	one_hot_labels.zero_()
 	one_hot_labels.scatter_(1, label_ids, 1)
 	# short to have the maximum number of predictions). The `label_weights`
