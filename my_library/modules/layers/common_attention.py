@@ -1154,7 +1154,7 @@ def embedding_postprocessor(input_tensor,
 def layer_norm(use_fp16, input_tensor, norm_layer):
 	"""Run layer normalization on the last dimension of the tensor."""
 	if use_fp16:
-		return norm_layer(input_tensor.float()).half()
+		return norm_layer(input_tensor.float().cuda()).half()
 	else:
 		return norm_layer(input_tensor)
 
