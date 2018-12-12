@@ -165,6 +165,7 @@ class EmbeddingV2(TokenEmbedder):
                     "(http://nlp.stanford.edu/data/glove.twitter.27B.zip)#glove.twitter.27B.200d.txt"
         """
         # pylint: disable=arguments-differ
+        use_fp16 = params.pop_bool('use_fp16', False)
         num_embeddings = params.pop_int('num_embeddings', None)
         vocab_namespace = params.pop("vocab_namespace", "tokens")
         if num_embeddings is None:
@@ -190,7 +191,8 @@ class EmbeddingV2(TokenEmbedder):
         else:
             weight = None
 
-        return cls(num_embeddings=num_embeddings,
+        return cls(use_fp16=use_fp16,
+                   num_embeddings=num_embeddings,
                    embedding_dim=embedding_dim,
                    weight=weight,
                    padding_index=padding_index,
