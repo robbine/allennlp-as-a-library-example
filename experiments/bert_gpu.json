@@ -24,8 +24,10 @@
   "validation_data_path": "/home/icepine.hans/data/bert_sample_validate.txt",
   "model": {
     "type": "bert",
+    "use_fp16": true,
     "text_field_embedder": {
       "type": "basic_v2",
+      "use_fp16": true,
       "tokens": {
         "type": "embedding_v2",
         "pretrained_file": "/home/icepine.hans/Downloads/glove.840B.300d.zip",
@@ -34,6 +36,7 @@
       }
     },
     "transformer": {
+      "use_fp16": true,
       "type": "transformer",
       "num_hidden_layers": 6,
       "intermediate_size": 3072,
@@ -75,7 +78,7 @@
     "grad_clipping": 1.0,
     "validation_metric": "+accuracy",
     "optimizer": {
-      "type": "bert_adam",
+      "type": "bert_adam_v2",
       "lr": 2e-5
     }
   }

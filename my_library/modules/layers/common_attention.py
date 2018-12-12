@@ -8,7 +8,6 @@ from allennlp.nn import util
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
-
 def comma_separated_string_to_integer_list(s):
 	return [int(i) for i in s.split(",") if i]
 
@@ -140,7 +139,8 @@ def attention_bias_to_padding(attention_bias):
 	return torch.squeeze(torch.squeeze(((attention_bias < -1).float()), dim=1), dim=1)
 
 
-def compute_qkv(query_antecedent,
+def compute_qkv(use_fp16,
+				query_antecedent,
 				memory_antecedent,
 				key_projection: nn.Linear,
 				value_projection: nn.Linear,
@@ -154,9 +154,13 @@ def compute_qkv(query_antecedent,
 	"""
 	if memory_antecedent is None:
 		memory_antecedent = query_antecedent
-	q = query_projection(query_antecedent)
-	k = key_projection(memory_antecedent)
-	v = value_projection(memory_antecedent)
+	q = query_projection(query_antecedent.float())
+	k = key_projection(memory_antecedent.float())
+	v = value_projection(memory_antecedent.float())
+	if use_fp16:
+		q = q.half()
+		k = k.half()
+		v = v.half()
 	return q, k, v
 
 
@@ -169,7 +173,7 @@ def split_heads(x, num_heads):
 	  a Tensor with shape [batch, num_heads, length, channels / num_heads]
 	"""
 	batch, length, channels = x.size()
-	per_head = x.view(batch, length, num_heads, int(channels / num_heads))
+	per_head = x.float().view(batch, length, num_heads, int(channels / num_heads))
 	return per_head.transpose(1, 2).contiguous()
 
 
@@ -918,7 +922,8 @@ def combine_heads(x):
 	return outputs
 
 
-def multihead_attention(query_antecedent,
+def multihead_attention(use_fp16,
+						query_antecedent,
 						memory_antecedent,
 						bias,
 						total_key_depth,
@@ -1009,7 +1014,7 @@ def multihead_attention(query_antecedent,
 	if total_value_depth % num_heads != 0:
 		raise ValueError("Value depth (%d) must be divisible by the number of "
 						 "attention heads (%d)." % (total_value_depth, num_heads))
-	q, k, v = compute_qkv(query_antecedent, memory_antecedent, key_projection, value_projection, query_projection)
+	q, k, v = compute_qkv(use_fp16, query_antecedent, memory_antecedent, key_projection, value_projection, query_projection)
 
 	q = split_heads(q, num_heads)
 	k = split_heads(k, num_heads)
@@ -1079,6 +1084,7 @@ def multihead_attention(query_antecedent,
 
 def embedding_postprocessor(input_tensor,
 							input_mask_tensor,
+							use_fp16,
 							token_type_ids=None,
 							use_token_type=False,
 							token_type_embedding=None,
@@ -1126,26 +1132,37 @@ def embedding_postprocessor(input_tensor,
 							 "`use_token_type` is True.")
 		# This vocab will be small so we always do one-hot here, since it is always
 		# faster for a small vocabulary.
-		output += token_type_embedding(token_type_ids)
+		token_type_embedding_res = token_type_embedding(token_type_ids)
+		if use_fp16:
+			output = torch.add(output.float(), token_type_embedding_res.float()).half()
+		else:
+			output += token_type_embedding_res
 
 	if use_position_embeddings:
 		range_tensor = util.get_range_vector(seq_length, util.get_device_of(input_mask_tensor))
 		range_tensor = range_tensor.view(1, -1).long()
-		output += position_embedding(input_mask_tensor * range_tensor)
+		position_embedding_res = position_embedding(input_mask_tensor * range_tensor)
+		if use_fp16:
+			output = torch.add(output.float(), position_embedding_res.float()).half()
+		else:
+			output += position_embedding_res
 
-	output = layer_norm_and_dropout(output, norm_layer, dropout)
+	output = layer_norm_and_dropout(use_fp16, output, norm_layer, dropout)
 	return output
 
 
-def layer_norm(input_tensor, norm_layer):
+def layer_norm(use_fp16, input_tensor, norm_layer):
 	"""Run layer normalization on the last dimension of the tensor."""
-	return norm_layer(input_tensor)
+	if use_fp16:
+		return norm_layer(input_tensor.float()).half()
+	else:
+		return norm_layer(input_tensor)
 
 
-def layer_norm_and_dropout(input_tensor, norm_layer, dropout):
+def layer_norm_and_dropout(use_fp16, input_tensor, norm_layer, dropout):
 	"""Runs layer normalization followed by dropout."""
-	output_tensor = layer_norm(input_tensor, norm_layer)
-	output_tensor = dropout(output_tensor)
+	output_tensor = layer_norm(use_fp16, input_tensor, norm_layer)
+	output_tensor = dropout(output_tensor.float()).half()
 	return output_tensor
 
 
@@ -1169,7 +1186,7 @@ def create_attention_mask_from_input_mask(from_tensor, to_mask):
 	# tokens so we create a tensor of all ones.
 	#
 	# `broadcast_ones` = [batch_size, from_seq_length, 1]
-	broadcast_ones = torch.ones(batch_size, from_seq_length, 1, device=util.get_device_of(to_mask)).float()
+	broadcast_ones = torch.ones(batch_size, from_seq_length, 1).float()
 	# Here we broadcast along two dimensions to create the mask.
 	mask = broadcast_ones * to_mask
 	return mask.unsqueeze(1)

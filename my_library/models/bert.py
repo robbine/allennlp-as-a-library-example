@@ -17,12 +17,13 @@ logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 @Model.register("bert")
 class Bert(Model):
-	def __init__(self, vocab: Vocabulary,
+	def __init__(self, vocab: Vocabulary, use_fp16,
 				 text_field_embedder: TextFieldEmbedder,
 				 transformer: Seq2SeqEncoder,
 				 initializer: InitializerApplicator = InitializerApplicator(),
 				 regularizer: Optional[RegularizerApplicator] = None) -> None:
 		super().__init__(vocab, regularizer)
+		self._use_fp16 = use_fp16
 		self._vocab_bias = nn.Parameter(torch.zeros(vocab.get_vocab_size()))
 		self._type_bias = nn.Parameter(torch.zeros(2))
 		self._text_field_embedder = text_field_embedder
@@ -35,9 +36,36 @@ class Bert(Model):
 		self._masked_lm_accuracy = CategoricalAccuracy()
 		self._next_sentence_accuracy = CategoricalAccuracy()
 		self._loss = torch.nn.CrossEntropyLoss()
+		if self._use_fp16:
+			self.partial_half()
 		# for name, p in self.named_parameters():
 		# 	print(name, p.size())
 		initializer(self)
+
+	def partial_half(self):
+		def to_half(t):
+			if t.is_floating_point():
+				return t.half()
+			else:
+				return t
+		fn = to_half
+		for name, module in self.named_children():
+			print(name)
+			if isinstance(module, nn.Linear) == False and isinstance(module, nn.LayerNorm) == False:
+				module._apply(fn)
+
+		# for param in self._parameters.values():
+		# 	if param is not None:
+		# 		# Tensors stored in modules are graph leaves, and we don't
+		# 		# want to create copy nodes, so we have to unpack the data.
+		# 		param.data = fn(param.data)
+		# 		if param._grad is not None:
+		# 			param._grad.data = fn(param._grad.data)
+		#
+		# for key, buf in self._buffers.items():
+		# 	if buf is not None:
+		# 		self._buffers[key] = fn(buf)
+
 
 	def forward(self, tokens: Dict[str, torch.LongTensor],
 				input_mask: torch.LongTensor,
@@ -87,7 +115,7 @@ def get_masked_lm_output(input_tensor, norm_layer, bias, masked_lm_feedforward, 
 	input_tensor = gather_indexes(input_tensor, positions)
 	input_tensor = masked_lm_feedforward(input_tensor)
 	input_tensor = norm_layer(input_tensor)
-	logits = torch.matmul(input_tensor, output_weights.transpose(0, 1))
+	logits = torch.matmul(input_tensor, output_weights.transpose(0, 1).float())
 	logits = logits + bias
 	log_probs = torch.nn.functional.softmax(logits, dim=-1)
 	label_ids = label_ids.view(-1, 1)

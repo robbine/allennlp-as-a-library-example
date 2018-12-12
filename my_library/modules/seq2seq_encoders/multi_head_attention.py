@@ -8,7 +8,6 @@ from torch.nn import Dropout, Linear
 
 from my_library.modules.layers import common_attention
 
-
 @Seq2SeqEncoder.register("multi_head_attention")
 class MultiHeadAttention(Seq2SeqEncoder):
 	# pylint: disable=line-too-long
@@ -39,6 +38,7 @@ class MultiHeadAttention(Seq2SeqEncoder):
 	"""
 
 	def __init__(self,
+				 use_fp16: bool,
 				 num_heads: int,
 				 input_size: int,
 				 memory_size: int,
@@ -56,7 +56,7 @@ class MultiHeadAttention(Seq2SeqEncoder):
 				 ) -> None:
 
 		super(MultiHeadAttention, self).__init__()
-
+		self._use_fp16 = use_fp16
 		self._num_heads = num_heads
 		self._input_size = input_size
 		self._memory_size = memory_size
@@ -121,6 +121,25 @@ class MultiHeadAttention(Seq2SeqEncoder):
 				self._relative_value_embeddings = nn.Parameter(
 					torch.randn(self._num_heads, self._max_relative_position_unmasked, self._value_depth))
 
+	def _apply(self, fn):
+		if self._use_fp16:
+			for name, module in self.named_children():
+				print('\t\t' + name + ' ' + str(isinstance(module, nn.Linear)))
+				if not isinstance(module, nn.Linear):
+					module._apply(fn)
+
+			for param in self._parameters.values():
+				if param is not None:
+					# Tensors stored in modules are graph leaves, and we don't
+					# want to create copy nodes, so we have to unpack the data.
+					param.data = fn(param.data)
+					if param._grad is not None:
+						param._grad.data = fn(param._grad.data)
+
+			for key, buf in self._buffers.items():
+				if buf is not None:
+					self._buffers[key] = fn(buf)
+		return self
 
 	def get_input_dim(self):
 		return self._input_size
@@ -152,7 +171,8 @@ class MultiHeadAttention(Seq2SeqEncoder):
 		-------
 		A tensor of shape (batch_size, timesteps, input_dim),
 		"""
-		outputs = common_attention.multihead_attention(embedded_tokens,
+		outputs = common_attention.multihead_attention(self._use_fp16,
+													   embedded_tokens,
 													   embedded_tokens,
 													   encoder_self_attention_bias,
 													   self._key_depth,

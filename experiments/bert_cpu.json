@@ -24,8 +24,10 @@
   "validation_data_path": "/Users/songhan/data/bert_sample_validate.txt",
   "model": {
     "type": "bert",
+    "use_fp16": false,
     "text_field_embedder": {
       "type": "basic_v2",
+      "use_fp16": false,
       "tokens": {
         "type": "embedding_v2",
         "pretrained_file": "/Users/songhan/Downloads/glove.840B.300d.zip",
@@ -35,6 +37,7 @@
     },
     "transformer": {
       "type": "transformer",
+      "use_fp16": false,
       "num_hidden_layers": 12,
       "intermediate_size": 3072,
       "intermediate_act_fn": "gelu",
@@ -75,7 +78,7 @@
     "grad_clipping": 1.0,
     "validation_metric": "+accuracy",
     "optimizer": {
-      "type": "bert_adam",
+      "type": "bert_adam_v2",
       "lr": 2e-5
     }
   }

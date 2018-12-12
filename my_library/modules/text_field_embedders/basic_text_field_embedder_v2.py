@@ -45,10 +45,12 @@ class BasicTextFieldEmbedderV2(TextFieldEmbedder):
         via ``embedder_to_indexer_map``).
     """
     def __init__(self,
+                 use_fp16,
                  token_embedders: Dict[str, TokenEmbedder],
                  embedder_to_indexer_map: Dict[str, List[str]] = None,
                  allow_unmatched_keys: bool = False) -> None:
         super(BasicTextFieldEmbedderV2, self).__init__()
+        self._use_fp16 = use_fp16
         self._token_embedders = token_embedders
         self._embedder_to_indexer_map = embedder_to_indexer_map
         for key, embedder in token_embedders.items():
@@ -86,8 +88,11 @@ class BasicTextFieldEmbedderV2(TextFieldEmbedder):
             for _ in range(num_wrapping_dims):
                 embedder = TimeDistributed(embedder)
             token_vectors = embedder(*tensors)
-            embedded_representations.append(token_vectors)
-        return torch.cat(embedded_representations, dim=-1)
+            embedded_representations.append(token_vectors.float())
+        res = torch.cat(embedded_representations, dim=-1)
+        if self._use_fp16:
+            res = res.half()
+        return res
 
     def get_embedding_by_name(self, key):
         embedder = getattr(self, 'token_embedder_{}'.format(key))

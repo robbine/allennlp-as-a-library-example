@@ -76,6 +76,7 @@ class EmbeddingV2(TokenEmbedder):
     """
 
     def __init__(self,
+                 use_fp16: bool,
                  num_embeddings: int,
                  embedding_dim: int,
                  weight: torch.FloatTensor = None,
@@ -86,6 +87,7 @@ class EmbeddingV2(TokenEmbedder):
                  scale_grad_by_freq: bool = False,
                  sparse: bool = False) -> None:
         super(EmbeddingV2, self).__init__()
+        self._use_fp16 = use_fp16
         self.num_embeddings = num_embeddings
         self.padding_index = padding_index
         self.max_norm = max_norm
@@ -119,11 +121,13 @@ class EmbeddingV2(TokenEmbedder):
         original_inputs = inputs
         if original_inputs.dim() > 2:
             inputs = inputs.view(-1, inputs.size(-1))
-        embedded = embedding(inputs, self.weight,
+        embedded = embedding(inputs, self.weight.float(),
                              max_norm=self.max_norm,
                              norm_type=self.norm_type,
                              scale_grad_by_freq=self.scale_grad_by_freq,
                              sparse=self.sparse)
+        if self._use_fp16:
+            embedded = embedded.half()
         if original_inputs.dim() > 2:
             view_args = list(original_inputs.size()) + [embedded.size(-1)]
             embedded = embedded.view(*view_args)

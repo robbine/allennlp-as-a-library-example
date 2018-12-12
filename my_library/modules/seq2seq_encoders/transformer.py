@@ -8,6 +8,7 @@ from torch.nn import Dropout
 from allennlp.modules.feedforward import FeedForward
 from allennlp.modules.seq2seq_encoders.seq2seq_encoder import Seq2SeqEncoder
 
+from my_library.modules.token_embedders.embedding_v2 import EmbeddingV2
 from my_library.modules.layers import common_attention
 from my_library.modules.seq2seq_encoders.multi_head_attention import MultiHeadAttention
 
@@ -68,6 +69,7 @@ class Transformer(Seq2SeqEncoder):
 	"""
 
 	def __init__(self,
+				 use_fp16: bool,
 				 num_hidden_layers: int,
 				 intermediate_size: int,
 				 intermediate_act_fn: str,
@@ -88,10 +90,12 @@ class Transformer(Seq2SeqEncoder):
 				 block_width=64) -> None:
 		super(Transformer, self).__init__()
 		hidden_size = input_size
-
+		self._use_fp16 = use_fp16
 		self._norm_layer = nn.LayerNorm(input_size)
-		self._token_type_embedding = nn.Embedding(type_vocab_size, input_size)
-		self._position_embedding = nn.Embedding(max_position_embeddings, input_size)
+		# self._token_type_embedding = nn.Embedding(type_vocab_size, input_size)
+		# self._position_embedding = nn.Embedding(max_position_embeddings, input_size)
+		self._token_type_embedding = EmbeddingV2(self._use_fp16, type_vocab_size, input_size)
+		self._position_embedding = EmbeddingV2(self._use_fp16, max_position_embeddings, input_size)
 		self._dropout = Dropout(dropout_prob)
 		if intermediate_act_fn == 'gelu':
 			self._activation = gelu
@@ -105,7 +109,8 @@ class Transformer(Seq2SeqEncoder):
 		self._feedforward_intermediate_layers: List[FeedForward] = []
 
 		for i in range(num_hidden_layers):
-			self_attention = MultiHeadAttention(num_heads,
+			self_attention = MultiHeadAttention(use_fp16,
+												num_heads,
 												input_size,
 												memory_size,
 												key_depth,
@@ -140,6 +145,26 @@ class Transformer(Seq2SeqEncoder):
 		self._input_dim = input_size
 		self._output_dim = hidden_size
 
+	def _apply(self, fn):
+		if self._use_fp16:
+			for name, module in self.named_children():
+				print('\t' + name)
+				if not isinstance(module, nn.Linear) and not isinstance(module, nn.LayerNorm):
+					module._apply(fn)
+
+			for param in self._parameters.values():
+				if param is not None:
+					# Tensors stored in modules are graph leaves, and we don't
+					# want to create copy nodes, so we have to unpack the data.
+					param.data = fn(param.data)
+					if param._grad is not None:
+						param._grad.data = fn(param._grad.data)
+
+			for key, buf in self._buffers.items():
+				if buf is not None:
+					self._buffers[key] = fn(buf)
+		return self
+
 	@overrides
 	def get_input_dim(self) -> int:
 		return self._input_dim
@@ -158,6 +183,7 @@ class Transformer(Seq2SeqEncoder):
 				segment_ids: torch.LongTensor):  # pylint: disable=arguments-differ
 		embedded_tokens = common_attention.embedding_postprocessor(embedded_tokens,
 																   input_mask.long(),
+																   self._use_fp16,
 																   token_type_ids=segment_ids.long(),
 																   use_token_type=True,
 																   token_type_embedding=self._token_type_embedding,
@@ -182,7 +208,7 @@ class Transformer(Seq2SeqEncoder):
 			layer_input = prev_output
 			attention_output = attention(layer_input, input_mask, encoder_self_attention_bias)
 			attention_output = self._dropout(feedforward_output(attention_output))
-			attention_output = layer_norm_output(attention_output + layer_input)
+			attention_output = layer_norm_output(attention_output + layer_input.float())
 			intermediate_output = self._activation(feedforward_intermediate(attention_output))
 			# Project output of attention encoder through a feedforward
 			# network and back to the input size for the next layer.
