@@ -1165,7 +1165,7 @@ def layer_norm_and_dropout(use_fp16, input_tensor, norm_layer, dropout):
 	return output_tensor
 
 
-def create_attention_mask_from_input_mask(from_tensor, to_mask):
+def create_attention_mask_from_input_mask(from_tensor, to_mask, use_fp16):
 	"""Create 3D attention mask from a 2D tensor mask.
   
 	Args:
@@ -1188,4 +1188,7 @@ def create_attention_mask_from_input_mask(from_tensor, to_mask):
 	broadcast_ones = utils.get_one_tensor([batch_size, from_seq_length, 1], device=util.get_device_of(to_mask))
 	# Here we broadcast along two dimensions to create the mask.
 	mask = broadcast_ones * to_mask
-	return mask.unsqueeze(1)
+	mask = mask.unsqueeze(1)
+	if use_fp16:
+		mask = mask.half()
+	return mask

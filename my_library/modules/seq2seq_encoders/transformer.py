@@ -1,5 +1,6 @@
 from typing import List
 import math
+
 from allennlp.nn import Activation
 from overrides import overrides
 import torch
@@ -192,7 +193,8 @@ class Transformer(Seq2SeqEncoder):
 																   norm_layer=self._norm_layer,
 																   dropout=self._dropout)
 		encoder_self_attention_bias = common_attention.create_attention_mask_from_input_mask(embedded_tokens,
-																							 input_mask)
+																							 input_mask,
+																							 self._use_fp16)
 		prev_output = embedded_tokens
 		for (attention,
 			 feedforward_output,
