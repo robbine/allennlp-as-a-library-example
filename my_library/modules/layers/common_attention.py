@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from allennlp.nn import util
+from my_library.util import *
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -1184,7 +1185,7 @@ def create_attention_mask_from_input_mask(from_tensor, to_mask):
 	# tokens so we create a tensor of all ones.
 	#
 	# `broadcast_ones` = [batch_size, from_seq_length, 1]
-	broadcast_ones = torch.ones(batch_size, from_seq_length, 1)
+	broadcast_ones = util.get_one_tensor([batch_size, from_seq_length, 1], device=util.get_device_of(to_mask))
 	# Here we broadcast along two dimensions to create the mask.
 	mask = broadcast_ones * to_mask
 	return mask.unsqueeze(1)
