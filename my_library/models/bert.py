@@ -90,7 +90,7 @@ class Bert(Model):
 			output_dict['masked_lm_loss'] = masked_lm_loss
 			output_dict['masked_lm_example_loss'] = masked_lm_example_loss
 			output_dict['masked_lm_log_probs'] = masked_lm_log_probs
-			self._masked_lm_accuracy(masked_lm_log_probs, masked_lm_labels["tokens"].view(-1))
+			self._masked_lm_accuracy(masked_lm_log_probs.float(), masked_lm_labels["tokens"].view(-1))
 		if next_sentence_labels is not None:
 			(next_sentence_loss, next_sentence_example_loss,
 			 next_sentence_log_probs) = get_next_sentence_output(self._use_fp16,
@@ -98,7 +98,7 @@ class Bert(Model):
 			output_dict['next_sentence_loss'] = next_sentence_loss
 			output_dict['next_sentence_example_loss'] = next_sentence_example_loss
 			output_dict['next_sentence_log_probs'] = next_sentence_log_probs
-			self._next_sentence_accuracy(next_sentence_log_probs, next_sentence_labels)
+			self._next_sentence_accuracy(next_sentence_log_probs.float(), next_sentence_labels)
 		output_dict["loss"] = masked_lm_loss + next_sentence_loss
 		return output_dict
 
