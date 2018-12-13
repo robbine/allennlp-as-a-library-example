@@ -120,6 +120,8 @@ def get_masked_lm_output(use_fp16, input_tensor, norm_layer, bias, masked_lm_fee
 	log_probs = torch.nn.functional.softmax(logits, dim=-1)
 	label_ids = label_ids.view(-1, 1)
 	label_weights = label_weights.view(-1)
+	if use_fp16:
+		label_weights = label_weights.half()
 	vocab_size = output_weights.size(0)
 	if label_ids.is_cuda:
 		one_hot_labels = torch.cuda.FloatTensor(label_ids.size(0), vocab_size)
