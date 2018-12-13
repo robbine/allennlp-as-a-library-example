@@ -154,13 +154,9 @@ def compute_qkv(use_fp16,
 	"""
 	if memory_antecedent is None:
 		memory_antecedent = query_antecedent
-	q = query_projection(query_antecedent.float())
-	k = key_projection(memory_antecedent.float())
-	v = value_projection(memory_antecedent.float())
-	if use_fp16:
-		q = q.half()
-		k = k.half()
-		v = v.half()
+	q = query_projection(query_antecedent)
+	k = key_projection(memory_antecedent)
+	v = value_projection(memory_antecedent)
 	return q, k, v
 
 
@@ -173,7 +169,7 @@ def split_heads(x, num_heads):
 	  a Tensor with shape [batch, num_heads, length, channels / num_heads]
 	"""
 	batch, length, channels = x.size()
-	per_head = x.float().view(batch, length, num_heads, int(channels / num_heads))
+	per_head = x.view(batch, length, num_heads, int(channels / num_heads))
 	return per_head.transpose(1, 2).contiguous()
 
 
@@ -1134,7 +1130,7 @@ def embedding_postprocessor(input_tensor,
 		# faster for a small vocabulary.
 		token_type_embedding_res = token_type_embedding(token_type_ids)
 		if use_fp16:
-			output = torch.add(output.float(), token_type_embedding_res.float()).half()
+			output = torch.add(output, token_type_embedding_res)
 		else:
 			output += token_type_embedding_res
 
@@ -1143,7 +1139,7 @@ def embedding_postprocessor(input_tensor,
 		range_tensor = range_tensor.view(1, -1).long()
 		position_embedding_res = position_embedding(input_mask_tensor * range_tensor)
 		if use_fp16:
-			output = torch.add(output.float(), position_embedding_res.float()).half()
+			output = torch.add(output, position_embedding_res)
 		else:
 			output += position_embedding_res
 
@@ -1155,7 +1151,8 @@ def layer_norm(use_fp16, input_tensor, norm_layer):
 	"""Run layer normalization on the last dimension of the tensor."""
 	if use_fp16:
 		print(input_tensor.type())
-		return norm_layer(input_tensor.float().cuda()).half()
+		print(norm_layer.weight.type())
+		return norm_layer(input_tensor)
 	else:
 		return norm_layer(input_tensor)
 
@@ -1163,7 +1160,7 @@ def layer_norm(use_fp16, input_tensor, norm_layer):
 def layer_norm_and_dropout(use_fp16, input_tensor, norm_layer, dropout):
 	"""Runs layer normalization followed by dropout."""
 	output_tensor = layer_norm(use_fp16, input_tensor, norm_layer)
-	output_tensor = dropout(output_tensor.float()).half()
+	output_tensor = dropout(output_tensor)
 	return output_tensor
 
 
@@ -1180,14 +1177,14 @@ def create_attention_mask_from_input_mask(from_tensor, to_mask):
 	from_shape = from_tensor.size()
 	batch_size = from_shape[0]
 	from_seq_length = from_shape[1]
-	to_mask = to_mask.unsqueeze(1).float()
+	to_mask = to_mask.unsqueeze(1)
 
 	# We don't assume that `from_tensor` is a mask (although it could be). We
 	# don't actually care if we attend *from* padding tokens (only *to* padding)
 	# tokens so we create a tensor of all ones.
 	#
 	# `broadcast_ones` = [batch_size, from_seq_length, 1]
-	broadcast_ones = torch.ones(batch_size, from_seq_length, 1).float()
+	broadcast_ones = torch.ones(batch_size, from_seq_length, 1)
 	# Here we broadcast along two dimensions to create the mask.
 	mask = broadcast_ones * to_mask
 	return mask.unsqueeze(1)

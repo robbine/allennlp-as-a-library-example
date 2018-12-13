@@ -121,25 +121,25 @@ class MultiHeadAttention(Seq2SeqEncoder):
 				self._relative_value_embeddings = nn.Parameter(
 					torch.randn(self._num_heads, self._max_relative_position_unmasked, self._value_depth))
 
-	def _apply(self, fn):
-		if self._use_fp16:
-			for name, module in self.named_children():
-				print('\t\t' + name + ' ' + str(isinstance(module, nn.Linear)))
-				if not isinstance(module, nn.Linear):
-					module._apply(fn)
-
-			for param in self._parameters.values():
-				if param is not None:
-					# Tensors stored in modules are graph leaves, and we don't
-					# want to create copy nodes, so we have to unpack the data.
-					param.data = fn(param.data)
-					if param._grad is not None:
-						param._grad.data = fn(param._grad.data)
-
-			for key, buf in self._buffers.items():
-				if buf is not None:
-					self._buffers[key] = fn(buf)
-		return self
+	# def _apply(self, fn):
+	# 	if self._use_fp16:
+	# 		for name, module in self.named_children():
+	# 			print('\t\t' + name + ' ' + str(isinstance(module, nn.Linear)))
+	# 			if not isinstance(module, nn.Linear):
+	# 				module._apply(fn)
+	#
+	# 		for param in self._parameters.values():
+	# 			if param is not None:
+	# 				# Tensors stored in modules are graph leaves, and we don't
+	# 				# want to create copy nodes, so we have to unpack the data.
+	# 				param.data = fn(param.data)
+	# 				if param._grad is not None:
+	# 					param._grad.data = fn(param._grad.data)
+	#
+	# 		for key, buf in self._buffers.items():
+	# 			if buf is not None:
+	# 				self._buffers[key] = fn(buf)
+	# 	return self
 
 	def get_input_dim(self):
 		return self._input_size

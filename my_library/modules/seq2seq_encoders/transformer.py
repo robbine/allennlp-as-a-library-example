@@ -145,25 +145,25 @@ class Transformer(Seq2SeqEncoder):
 		self._input_dim = input_size
 		self._output_dim = hidden_size
 
-	def _apply(self, fn):
-		if self._use_fp16:
-			for name, module in self.named_children():
-				print('\t' + name)
-				if not isinstance(module, nn.Linear) and not isinstance(module, nn.LayerNorm):
-					module._apply(fn)
-
-			for param in self._parameters.values():
-				if param is not None:
-					# Tensors stored in modules are graph leaves, and we don't
-					# want to create copy nodes, so we have to unpack the data.
-					param.data = fn(param.data)
-					if param._grad is not None:
-						param._grad.data = fn(param._grad.data)
-
-			for key, buf in self._buffers.items():
-				if buf is not None:
-					self._buffers[key] = fn(buf)
-		return self
+	# def _apply(self, fn):
+	# 	if self._use_fp16:
+	# 		for name, module in self.named_children():
+	# 			print('\t' + name)
+	# 			if not isinstance(module, nn.Linear) and not isinstance(module, nn.LayerNorm):
+	# 				module._apply(fn)
+	#
+	# 		for param in self._parameters.values():
+	# 			if param is not None:
+	# 				# Tensors stored in modules are graph leaves, and we don't
+	# 				# want to create copy nodes, so we have to unpack the data.
+	# 				param.data = fn(param.data)
+	# 				if param._grad is not None:
+	# 					param._grad.data = fn(param._grad.data)
+	#
+	# 		for key, buf in self._buffers.items():
+	# 			if buf is not None:
+	# 				self._buffers[key] = fn(buf)
+	# 	return self
 
 	@overrides
 	def get_input_dim(self) -> int:
@@ -208,7 +208,7 @@ class Transformer(Seq2SeqEncoder):
 			layer_input = prev_output
 			attention_output = attention(layer_input, input_mask, encoder_self_attention_bias)
 			attention_output = self._dropout(feedforward_output(attention_output))
-			attention_output = layer_norm_output(attention_output + layer_input.float())
+			attention_output = layer_norm_output(attention_output + layer_input)
 			intermediate_output = self._activation(feedforward_intermediate(attention_output))
 			# Project output of attention encoder through a feedforward
 			# network and back to the input size for the next layer.

@@ -37,7 +37,7 @@ class Bert(Model):
 		self._next_sentence_accuracy = CategoricalAccuracy()
 		self._loss = torch.nn.CrossEntropyLoss()
 		if self._use_fp16:
-			self.partial_half()
+			self.half()
 		# for name, p in self.named_parameters():
 		# 	print(name, p.size())
 		initializer(self)
