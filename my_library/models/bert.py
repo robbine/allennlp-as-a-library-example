@@ -84,7 +84,7 @@ class Bert(Model):
 		next_sentence_loss = None
 		if masked_lm_labels is not None:
 			(masked_lm_loss,
-			 masked_lm_example_loss, masked_lm_log_probs) = get_masked_lm_output(
+			 masked_lm_example_loss, masked_lm_log_probs) = get_masked_lm_output(self._use_fp16,
 				transformed_tokens, self._norm_layer, self._vocab_bias, self._masked_lm_feedforward, embedding_table,
 				masked_lm_positions.long(), masked_lm_labels['tokens'], masked_lm_weights)
 			output_dict['masked_lm_loss'] = masked_lm_loss
@@ -93,7 +93,7 @@ class Bert(Model):
 			self._masked_lm_accuracy(masked_lm_log_probs, masked_lm_labels["tokens"].view(-1))
 		if next_sentence_labels is not None:
 			(next_sentence_loss, next_sentence_example_loss,
-			 next_sentence_log_probs) = get_next_sentence_output(
+			 next_sentence_log_probs) = get_next_sentence_output(self._use_fp16,
 				pooled_output, self._next_sentence_feedforward, self._type_bias, next_sentence_labels)
 			output_dict['next_sentence_loss'] = next_sentence_loss
 			output_dict['next_sentence_example_loss'] = next_sentence_example_loss
@@ -109,7 +109,7 @@ class Bert(Model):
 		}
 
 
-def get_masked_lm_output(input_tensor, norm_layer, bias, masked_lm_feedforward, output_weights, positions,
+def get_masked_lm_output(use_fp16, input_tensor, norm_layer, bias, masked_lm_feedforward, output_weights, positions,
 						 label_ids, label_weights):
 	"""Get loss and log probs for the masked LM."""
 	input_tensor = gather_indexes(input_tensor, positions)
@@ -125,6 +125,8 @@ def get_masked_lm_output(input_tensor, norm_layer, bias, masked_lm_feedforward, 
 		one_hot_labels = torch.cuda.FloatTensor(label_ids.size(0), vocab_size)
 	else:
 		one_hot_labels = torch.FloatTensor(label_ids.size(0), vocab_size)
+	if use_fp16:
+		one_hot_labels = one_hot_labels.half()
 	one_hot_labels.zero_()
 	one_hot_labels.scatter_(1, label_ids, 1)
 	# short to have the maximum number of predictions). The `label_weights`
@@ -137,7 +139,7 @@ def get_masked_lm_output(input_tensor, norm_layer, bias, masked_lm_feedforward, 
 	return (loss, per_example_loss, log_probs)
 
 
-def get_next_sentence_output(input_tensor, next_sentence_feedforward, bias, labels):
+def get_next_sentence_output(use_fp16, input_tensor, next_sentence_feedforward, bias, labels):
 	"""Get loss and log probs for the next sentence prediction."""
 	# Simple binary classification. Note that 0 is "next sentence" and 1 is
 	# "random sentence". This weight matrix is not used after pre-training.
@@ -148,6 +150,8 @@ def get_next_sentence_output(input_tensor, next_sentence_feedforward, bias, labe
 		one_hot_labels = torch.cuda.FloatTensor(labels.size(0), 2)
 	else:
 		one_hot_labels = torch.FloatTensor(labels.size(0), 2)
+	if use_fp16:
+		one_hot_labels = one_hot_labels.half()
 	one_hot_labels.zero_()
 	one_hot_labels.scatter_(1, labels, 1)
 	per_example_loss = -(one_hot_labels * log_probs).sum(-1)
