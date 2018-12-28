@@ -54,7 +54,7 @@
     },
     "initializer": [
       [
-        ".*token_embedder_tokens\\._projection.*weight",
+        "_transformer\\._norm_layer.*weight",
         {
           "type": "xavier_normal"
         }
