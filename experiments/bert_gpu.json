@@ -54,7 +54,7 @@
     },
     "initializer": [
       [
-        "_transformer\\.self_attention_.*weight",
+        "_transformer\\._norm_layer.*weight",
         {
           "type": "xavier_normal"
         }
@@ -75,11 +75,11 @@
     "num_epochs": 10,
     "patience": 2,
     "cuda_device": 0,
-    "grad_clipping": 1.0,
+    "grad_clipping": 1,
     "validation_metric": "+accuracy",
     "optimizer": {
       "type": "bert_adam_v2",
-      "lr": 2e-5
+      "lr": 0.00002
     }
   }
 }
