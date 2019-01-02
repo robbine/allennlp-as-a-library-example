@@ -71,9 +71,18 @@ class MultiHeadAttention(Seq2SeqEncoder):
 			raise ValueError(f"Value size ({value_depth}) must be divisible by the number of "
 							 f"attention heads ({num_heads}).")
 
-		self._key_projection = Linear(memory_size, key_depth)
 		self._value_projection = Linear(memory_size, value_depth)
+		self._key_projection = Linear(memory_size, key_depth)
 		self._query_projection = Linear(input_size, key_depth)
+		torch.nn.init.xavier_uniform(self._key_projection.weight)
+		torch.nn.init.xavier_uniform(self._value_projection.weight)
+		torch.nn.init.xavier_uniform(self._query_projection.weight)
+		self._key_projection.bias.data.fill_(0)
+		self._value_projection.bias.data.fill_(0)
+		self._query_projection.bias.data.fill_(0)
+		# self.add_module(f"value_projection", self._value_projection)
+		# self.add_module(f"key_projection", self._key_projection)
+		# self.add_module(f"query_projection", self._query_projection)
 		self._attention_dropout = Dropout(attention_dropout_prob)
 
 		self._attention_type = attention_type
@@ -89,37 +98,45 @@ class MultiHeadAttention(Seq2SeqEncoder):
 		self._block_length = block_length
 		self._block_width = block_width
 		if attention_type == 'dot_product_relative':
-			self._key_embedding = nn.Parameter(torch.randn(self._vocab_size, self._key_depth))
-			self._value_embedding = nn.Parameter(torch.randn(self._vocab_size, self._value_depth))
+			self._key_embedding = nn.Parameter(torch.Tensor(self._vocab_size, self._key_depth))
+			self._value_embedding = nn.Parameter(torch.Tensor(self._vocab_size, self._value_depth))
+			torch.nn.init.xavier_uniform(self._key_embedding)
+			torch.nn.init.xavier_uniform(self._value_embedding)
 		elif attention_type == 'dot_product_unmasked_relative_v2':
 			if heads_share_relative_embedding:
-				self._relative_key_embeddings = nn.Parameter(torch.randn(self._rel_embed_length, self._key_depth))
-				self._relative_value_embeddings = nn.Parameter(torch.randn(self._rel_embed_length, self._value_depth))
+				self._relative_key_embeddings = nn.Parameter(torch.Tensor(self._rel_embed_length, self._key_depth))
+				self._relative_value_embeddings = nn.Parameter(torch.Tensor(self._rel_embed_length, self._value_depth))
 			else:
 				self._relative_key_embeddings = nn.Parameter(
-					torch.randn(self._num_heads, self._rel_embed_length, self._key_depth))
+					torch.Tensor(self._num_heads, self._rel_embed_length, self._key_depth))
 				self._relative_value_embeddings = nn.Parameter(
-					torch.randn(self._num_heads, self._rel_embed_length, self._value_depth))
+					torch.Tensor(self._num_heads, self._rel_embed_length, self._value_depth))
+			torch.nn.init.xavier_uniform(self._relative_key_embeddings)
+			torch.nn.init.xavier_uniform(self._relative_value_embeddings)
 		elif attention_type == 'local_relative_mask_right':
 			if heads_share_relative_embedding:
-				self._relative_key_embeddings = nn.Parameter(torch.randn(self._rel_embed_length, self._key_depth))
-				self._relative_value_embeddings = nn.Parameter(torch.randn(self._rel_embed_length, self._value_depth))
+				self._relative_key_embeddings = nn.Parameter(torch.Tensor(self._rel_embed_length, self._key_depth))
+				self._relative_value_embeddings = nn.Parameter(torch.Tensor(self._rel_embed_length, self._value_depth))
 			else:
 				self._relative_key_embeddings = nn.Parameter(
-					torch.randn(self._num_heads, self._rel_embed_length, self._key_depth))
+					torch.Tensor(self._num_heads, self._rel_embed_length, self._key_depth))
 				self._relative_value_embeddings = nn.Parameter(
-					torch.randn(self._num_heads, self._rel_embed_length, self._value_depth))
+					torch.Tensor(self._num_heads, self._rel_embed_length, self._value_depth))
+			torch.nn.init.xavier_uniform(self._relative_key_embeddings)
+			torch.nn.init.xavier_uniform(self._relative_value_embeddings)
 		elif attention_type == 'dot_product_unmasked_self_attention_relative_v2':
 			if heads_share_relative_embedding:
 				self._relative_key_embeddings = nn.Parameter(
-					torch.randn(self._max_relative_position_unmasked, self._key_depth))
+					torch.Tensor(self._max_relative_position_unmasked, self._key_depth))
 				self._relative_value_embeddings = nn.Parameter(
-					torch.randn(self._max_relative_position_unmasked, self._value_depth))
+					torch.Tensor(self._max_relative_position_unmasked, self._value_depth))
 			else:
 				self._relative_key_embeddings = nn.Parameter(
-					torch.randn(self._num_heads, self._max_relative_position_unmasked, self._key_depth))
+					torch.Tensor(self._num_heads, self._max_relative_position_unmasked, self._key_depth))
 				self._relative_value_embeddings = nn.Parameter(
-					torch.randn(self._num_heads, self._max_relative_position_unmasked, self._value_depth))
+					torch.Tensor(self._num_heads, self._max_relative_position_unmasked, self._value_depth))
+			torch.nn.init.xavier_uniform(self._relative_key_embeddings)
+			torch.nn.init.xavier_uniform(self._relative_value_embeddings)
 
 	# def _apply(self, fn):
 	# 	if self._use_fp16:
@@ -166,7 +183,7 @@ class MultiHeadAttention(Seq2SeqEncoder):
 			A tensor of shape (batch_size, timesteps, input_dim)
 		mask : ``torch.FloatTensor``, optional (default = None).
 			A tensor of shape (batch_size, timesteps).
-	
+
 		Returns
 		-------
 		A tensor of shape (batch_size, timesteps, input_dim),

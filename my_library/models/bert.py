@@ -33,6 +33,7 @@ class Bert(Model):
 		self._next_sentence_feedforward = nn.Linear(hidden_size, 2)
 		self._masked_lm_feedforward = nn.Linear(transformer.get_output_dim(), text_field_embedder.get_output_dim())
 		self._norm_layer = nn.LayerNorm(text_field_embedder.get_output_dim())
+
 		self._masked_lm_accuracy = CategoricalAccuracy()
 		self._next_sentence_accuracy = CategoricalAccuracy()
 		self._loss = torch.nn.CrossEntropyLoss()

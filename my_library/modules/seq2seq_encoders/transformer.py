@@ -142,6 +142,12 @@ class Transformer(Seq2SeqEncoder):
 			self._feedforward_layers.append(feedforward)
 			self._feedforward_output_layers.append(feedforward_output)
 			self._feedforward_intermediate_layers.append(feedforward_intermediate)
+			torch.nn.init.xavier_uniform(feedforward_output.weight)
+			torch.nn.init.xavier_uniform(feedforward_intermediate.weight)
+			torch.nn.init.xavier_uniform(feedforward.weight)
+			feedforward_output.bias.data.fill_(0)
+			feedforward_intermediate.bias.data.fill_(0)
+			feedforward.bias.data.fill_(0)
 
 		self._input_dim = input_size
 		self._output_dim = hidden_size
