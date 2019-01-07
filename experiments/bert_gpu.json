@@ -6,7 +6,7 @@
     "short_seq_prob": 0.1,
     "masked_lm_prob": 0.15,
     "max_predictions_per_seq": 20,
-    "lazy": false,
+    "lazy": true,
     "tokenizer": {
       "type": "jieba",
       "word_splitter": {
@@ -41,7 +41,6 @@
       "use_fp16": false,
       "type": "transformer",
       "num_hidden_layers": 12,
-      "intermediate_size": 768,
       "intermediate_act_fn": "gelu",
       "num_heads": 12,
       "input_size": 200,
@@ -70,7 +69,7 @@
   "trainer": {
     "num_epochs": 40,
     "patience": 10,
-    "cuda_device": 1,
+    "cuda_device": 0,
     "grad_clipping": 1,
     "validation_metric": "-loss",
     "optimizer": {

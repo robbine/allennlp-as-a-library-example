@@ -80,9 +80,6 @@ class MultiHeadAttention(Seq2SeqEncoder):
 		self._key_projection.bias.data.fill_(0)
 		self._value_projection.bias.data.fill_(0)
 		self._query_projection.bias.data.fill_(0)
-		# self.add_module(f"value_projection", self._value_projection)
-		# self.add_module(f"key_projection", self._key_projection)
-		# self.add_module(f"query_projection", self._query_projection)
 		self._attention_dropout = Dropout(attention_dropout_prob)
 
 		self._attention_type = attention_type

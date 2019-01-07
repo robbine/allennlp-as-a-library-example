@@ -4,6 +4,7 @@ import logging
 import random
 import time
 import collections
+from typing import Iterator
 
 from allennlp.common import Params, Tqdm
 from allennlp.common.file_utils import cached_path
@@ -73,7 +74,7 @@ class BertDatasetReader(DatasetReader):
 		self.short_seq_prob = short_seq_prob
 		self.masked_lm_prob = masked_lm_prob
 		self.max_predictions_per_seq = max_predictions_per_seq
-
+		self.lazy = lazy
 		self._tokenizer = tokenizer or WordTokenizer()
 		self._token_indexers = token_indexers or {"tokens": BertSingleIdTokenIndexer()}
 		self.rng = random.Random(time.time())
@@ -106,14 +107,20 @@ class BertDatasetReader(DatasetReader):
 		all_documents = [x for x in all_documents if x]
 		self.rng.shuffle(all_documents)
 		instances = []
-		for _ in range(self.dupe_factor):
-			for document_index in range(len(all_documents)):
-				instances.extend(
-					self.create_instances_from_document(
-						all_documents, document_index, dictionary))
+		if self.lazy:
+			for _ in range(self.dupe_factor):
+				for document_index in range(len(all_documents)):
+					for instance in self.create_instances_from_document_dummy(all_documents, document_index, dictionary):
+						yield instance
+		else:
+			for _ in range(self.dupe_factor):
+				for document_index in range(len(all_documents)):
+					instances.extend(
+						self.create_instances_from_document(
+							all_documents, document_index, dictionary))
 
-		self.rng.shuffle(instances)
-		return instances
+			self.rng.shuffle(instances)
+			return instances
 
 	def text_to_instance(self, tokens_a, tokens_b, is_random_next=False, dictionary=None) -> Instance:
 		assert len(tokens_a) >= 1
@@ -149,6 +156,44 @@ class BertDatasetReader(DatasetReader):
 		fields['masked_lm_weights'] = ArrayField(array(masked_lm_weights))
 		fields['masked_lm_labels'] = TextField(masked_lm_labels, self._token_indexers)
 		return Instance(fields)
+
+	def create_instances_from_document_dummy(self, all_documents, document_index,
+									   dictionary=None) -> Iterator[Instance]:  # type: ignore
+		"""Creates `TrainingInstance`s for a single document."""
+		document = all_documents[document_index]
+
+		# Account for [CLS], [SEP], [SEP]
+		max_num_tokens = self.max_seq_length - 3
+
+		i = 0
+		while i < len(document):
+			if i + 1 < len(document):
+				tokens_a = document[i]
+				# Random next
+				is_random_next = False
+				if self.rng.random() < 0.5:
+					is_random_next = True
+
+					# This should rarely go for more than one iteration for large
+					# corpora. However, just to be careful, we try to make sure that
+					# the random document is not the same as the document
+					# we're processing.
+					random_document_index = 0
+					for _ in range(10):
+						random_document_index = self.rng.randint(0, len(all_documents) - 1)
+						if random_document_index != document_index:
+							break
+
+					random_document = all_documents[random_document_index]
+					tokens_b = random.choice(random_document)
+				# Actual next
+				else:
+					is_random_next = False
+					tokens_b = document[i+1]
+				truncate_seq_pair(tokens_a, tokens_b, max_num_tokens, self.rng)
+				yield self.text_to_instance(tokens_a, tokens_b, is_random_next, dictionary)
+			i += 2
+		return
 
 	def create_instances_from_document(self, all_documents, document_index,
 									   dictionary=None) -> List[Instance]:  # type: ignore
