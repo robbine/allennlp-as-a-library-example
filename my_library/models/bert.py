@@ -125,7 +125,7 @@ def get_masked_lm_output(use_fp16, input_tensor, norm_layer, bias, masked_lm_fee
 		label_weights = label_weights.half()
 	vocab_size = output_weights.size(0)
 	if label_ids.is_cuda:
-		one_hot_labels = torch.cuda.FloatTensor(label_ids.size(0), vocab_size)
+		one_hot_labels = torch.cuda.FloatTensor(label_ids.size(0), vocab_size, device=util.get_device_of(label_ids))
 	else:
 		one_hot_labels = torch.FloatTensor(label_ids.size(0), vocab_size)
 	if use_fp16:
@@ -150,7 +150,7 @@ def get_next_sentence_output(use_fp16, input_tensor, next_sentence_feedforward, 
 	log_probs = torch.nn.functional.softmax(logits, dim=-1)
 	labels = labels.view(-1, 1)
 	if labels.is_cuda:
-		one_hot_labels = torch.cuda.FloatTensor(labels.size(0), 2)
+		one_hot_labels = torch.cuda.FloatTensor(labels.size(0), 2, device=util.get_device_of(labels))
 	else:
 		one_hot_labels = torch.FloatTensor(labels.size(0), 2)
 	if use_fp16:
