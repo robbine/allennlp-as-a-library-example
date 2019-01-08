@@ -1090,7 +1090,7 @@ def embedding_postprocessor(input_tensor,
 							norm_layer=None,
 							dropout=None):
 	"""Performs various post-processing on a word embedding tensor.
-  
+
 	Args:
 	  input_tensor: float Tensor of shape [batch_size, seq_length,
 		embedding_size].
@@ -1109,10 +1109,10 @@ def embedding_postprocessor(input_tensor,
 		used with this model. This can be longer than the sequence length of
 		input_tensor, but cannot be shorter.
 	  dropout_prob: float. Dropout probability applied to the final output tensor.
-  
+
 	Returns:
 	  float tensor with same shape as `input_tensor`.
-  
+
 	Raises:
 	  ValueError: One of the tensor shapes or input values is invalid.
 	"""
@@ -1165,11 +1165,11 @@ def layer_norm_and_dropout(use_fp16, input_tensor, norm_layer, dropout):
 
 def create_attention_mask_from_input_mask(from_tensor, to_mask, use_fp16):
 	"""Create 3D attention mask from a 2D tensor mask.
-  
+
 	Args:
 	  from_tensor: 2D or 3D Tensor of shape [batch_size, from_seq_length, ...].
 	  to_mask: int32 Tensor of shape [batch_size, to_seq_length].
-  
+
 	Returns:
 	  float Tensor of shape [batch_size, from_seq_length, to_seq_length].
 	"""

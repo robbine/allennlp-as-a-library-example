@@ -6,7 +6,7 @@
     "short_seq_prob": 0.1,
     "masked_lm_prob": 0.15,
     "max_predictions_per_seq": 20,
-    "lazy": true,
+    "lazy": false,
     "tokenizer": {
       "type": "jieba",
       "word_splitter": {
@@ -31,8 +31,8 @@
       "type": "basic_v2",
       "use_fp16": false,
       "tokens": {
-        "type": "embedding_v2",
         "pretrained_file": "/home/icepine.hans/data/Tencent_AILab_ChineseEmbedding.tar.gz",
+        "type": "embedding_v2",
         "embedding_dim": 200,
         "trainable": true
       }
@@ -69,7 +69,7 @@
   "trainer": {
     "num_epochs": 40,
     "patience": 10,
-    "cuda_device": 0,
+    "cuda_device": 1,
     "grad_clipping": 1,
     "validation_metric": "-loss",
     "optimizer": {

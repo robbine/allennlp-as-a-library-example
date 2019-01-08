@@ -79,7 +79,7 @@ class BertDatasetReader(DatasetReader):
 		self._token_indexers = token_indexers or {"tokens": BertSingleIdTokenIndexer()}
 		self.rng = random.Random(time.time())
 
-	def _read(self, input_file: str) -> Iterable[Instance]:
+	def _read(self, input_file: str):
 		"""Create `TrainingInstance`s from raw text."""
 		all_documents = [[]]
 		dictionary = {}
@@ -120,7 +120,8 @@ class BertDatasetReader(DatasetReader):
 							all_documents, document_index, dictionary))
 
 			self.rng.shuffle(instances)
-			return instances
+			for instance in instances:
+				yield instance
 
 	def text_to_instance(self, tokens_a, tokens_b, is_random_next=False, dictionary=None) -> Instance:
 		assert len(tokens_a) >= 1
