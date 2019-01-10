@@ -33,7 +33,12 @@ class Bert(Model):
 		self._next_sentence_feedforward = nn.Linear(hidden_size, 2)
 		self._masked_lm_feedforward = nn.Linear(transformer.get_output_dim(), text_field_embedder.get_output_dim())
 		self._norm_layer = nn.LayerNorm(text_field_embedder.get_output_dim())
-
+		torch.nn.init.xavier_uniform(self._feedforward.weight)
+		torch.nn.init.xavier_uniform(self._next_sentence_feedforward.weight)
+		torch.nn.init.xavier_uniform(self._masked_lm_feedforward.weight)
+		self._feedforward.bias.data.fill_(0)
+		self._next_sentence_feedforward.bias.data.fill_(0)
+		self._masked_lm_feedforward.bias.data.fill_(0)
 		self._masked_lm_accuracy = CategoricalAccuracy()
 		self._next_sentence_accuracy = CategoricalAccuracy()
 		self._loss = torch.nn.CrossEntropyLoss()
@@ -100,7 +105,7 @@ class Bert(Model):
 			output_dict['next_sentence_example_loss'] = next_sentence_example_loss
 			output_dict['next_sentence_log_probs'] = next_sentence_log_probs
 			self._next_sentence_accuracy(next_sentence_log_probs.float(), next_sentence_labels)
-		output_dict["loss"] = masked_lm_loss + next_sentence_loss
+		output_dict["loss"] = masked_lm_loss
 		return output_dict
 
 	def get_metrics(self, reset: bool = False) -> Dict[str, float]:

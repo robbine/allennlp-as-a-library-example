@@ -72,6 +72,7 @@ class Transformer(Seq2SeqEncoder):
 	def __init__(self,
 				 use_fp16: bool,
 				 num_hidden_layers: int,
+				 intermediate_size: int,
 				 intermediate_act_fn: str,
 				 num_heads: int,
 				 input_size: int,
@@ -99,11 +100,12 @@ class Transformer(Seq2SeqEncoder):
 			self._activation = gelu
 		else:
 			self._activation = Activation.by_name(intermediate_act_fn)()
-		self._attention_layers: List[MultiHeadAttention] = []
-		self._layer_norm_output_layers = []
-		self._layer_norm_layers: List[nn.LayerNorm] = []
-		self._feedforward_layers: List[FeedForward] = []
-		self._feedforward_output_layers: List[FeedForward] = []
+		self._attention_layers = nn.ModuleList()
+		self._layer_norm_output_layers = nn.ModuleList()
+		self._layer_norm_layers = nn.ModuleList()
+		self._feedforward_layers = nn.ModuleList()
+		self._feedforward_output_layers = nn.ModuleList()
+		self._feedforward_intermediate_layers = nn.ModuleList()
 
 		for i in range(num_hidden_layers):
 			self_attention = MultiHeadAttention(use_fp16,
@@ -123,22 +125,27 @@ class Transformer(Seq2SeqEncoder):
 												block_width)
 			layer_norm_output = nn.LayerNorm(hidden_size)
 			layer_norm = nn.LayerNorm(hidden_size)
-			feedforward_output = nn.Linear(self_attention.get_output_dim(), hidden_size) # 768 -> 200
-			feedforward = nn.Linear(hidden_size, hidden_size) # 200 -> 200
+			feedforward_output = nn.Linear(self_attention.get_output_dim(), hidden_size)
+			feedforward_intemediate = nn.Linear(hidden_size, intermediate_size)
+			feedforward = nn.Linear(intermediate_size, hidden_size)
 			self.add_module(f"self_attention_{i}", self_attention)
 			self.add_module(f"layer_norm_output_{i}", layer_norm_output)
 			self.add_module(f"layer_norm_{i}", layer_norm)
 			self.add_module(f"feedforward_{i}", feedforward)
 			self.add_module(f"feedforward_output_{i}", feedforward_output)
+			self.add_module(f"feedforward_intermediate_{i}", feedforward_intemediate)
 			self._attention_layers.append(self_attention)
 			self._layer_norm_output_layers.append(layer_norm_output)
 			self._layer_norm_layers.append(layer_norm)
 			self._feedforward_layers.append(feedforward)
 			self._feedforward_output_layers.append(feedforward_output)
+			self._feedforward_intermediate_layers.append(feedforward_intemediate)
 			torch.nn.init.xavier_uniform(feedforward_output.weight)
 			torch.nn.init.xavier_uniform(feedforward.weight)
+			torch.nn.init.xavier_uniform(feedforward_intemediate.weight)
 			feedforward_output.bias.data.fill_(0)
 			feedforward.bias.data.fill_(0)
+			feedforward_intemediate.bias.data.fill_(0)
 
 		self._input_dim = input_size
 		self._output_dim = hidden_size
@@ -196,21 +203,23 @@ class Transformer(Seq2SeqEncoder):
 		for (attention,
 			 feedforward_output,
 			 feedforward,
+			 feedforward_intemediate,
 			 layer_norm_output,
 			 layer_norm) in zip(self._attention_layers,
 								self._feedforward_output_layers,
 								self._feedforward_layers,
+								self._feedforward_intermediate_layers,
 								self._layer_norm_output_layers,
 								self._layer_norm_layers):
 			layer_input = prev_output
 			attention_output = attention(layer_input, input_mask, encoder_self_attention_bias)
 			attention_output = self._dropout(feedforward_output(attention_output))
-			attention_output = layer_norm_output(attention_output + layer_input) # 200
-			attention_output = self._activation(attention_output)
+			attention_output = layer_norm_output(attention_output + layer_input)
+			attention_intermediate = self._activation(feedforward_intemediate(attention_output))
 			# Project output of attention encoder through a feedforward
 			# network and back to the input size for the next layer.
 			# shape (batch_size, timesteps, input_size)
-			layer_output = self._dropout(feedforward(attention_output))
+			layer_output = self._dropout(feedforward(attention_intermediate))
 			layer_output = layer_norm(layer_output + attention_output)
 			prev_output = layer_output
 
