@@ -152,7 +152,7 @@ class BertDatasetReader(DatasetReader):
 		fields["input_mask"] = ArrayField(array(input_mask))
 		fields['tokens'] = TextField(tokens, self._token_indexers)
 		fields['segment_ids'] = ArrayField(array(segment_ids))
-		fields['next_sentence_labels'] = LabelField(1 if is_random_next else 0, skip_indexing=True)
+		fields['next_sentence_labels'] = LabelField(0 if is_random_next else 1, skip_indexing=True)
 		fields['masked_lm_positions'] = ArrayField(array(masked_lm_positions))
 		fields['masked_lm_weights'] = ArrayField(array(masked_lm_weights))
 		fields['masked_lm_labels'] = TextField(masked_lm_labels, self._token_indexers)
@@ -272,6 +272,8 @@ class BertDatasetReader(DatasetReader):
 						is_random_next = False
 						for j in range(a_end, len(current_chunk)):
 							tokens_b.extend(current_chunk[j])
+						# logger.info('tokens a {}'.format(tokens_a))
+						# logger.info('tokens b {}'.format(tokens_b))
 					truncate_seq_pair(tokens_a, tokens_b, max_num_tokens, self.rng)
 					instances.append(self.text_to_instance(tokens_a, tokens_b, is_random_next, dictionary))
 				current_chunk = []
@@ -300,6 +302,7 @@ class BertDatasetReader(DatasetReader):
 
 		masked_lms = []
 		covered_indexes = set()
+		changed = False
 		for index in cand_indexes:
 			if len(masked_lms) >= num_to_predict:
 				break
@@ -320,6 +323,7 @@ class BertDatasetReader(DatasetReader):
 					if dictionary is None:
 						masked_token = tokens[index]
 					else:
+						changed = True
 						masked_token = Token(random.choice(list(dictionary.items()))[0])
 
 			output_tokens[index] = masked_token
@@ -327,7 +331,9 @@ class BertDatasetReader(DatasetReader):
 			masked_lms.append(MaskedLmInstance(index=index, label=tokens[index]))
 
 		masked_lms = sorted(masked_lms, key=lambda x: x.index)
-
+		# if changed:
+		# 	logger.info('original tokens {}'.format(tokens))
+		# 	logger.info('output tokens {}'.format(output_tokens))
 		masked_lm_positions = []
 		masked_lm_labels = []
 		for p in masked_lms:
