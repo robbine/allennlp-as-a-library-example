@@ -121,7 +121,7 @@ def get_masked_lm_output(use_fp16, input_tensor, norm_layer, bias, masked_lm_fee
 	input_tensor = gather_indexes(input_tensor, positions)
 	input_tensor = masked_lm_feedforward(input_tensor)
 	input_tensor = norm_layer(input_tensor)
-	logits = torch.matmul(input_tensor, output_weights.transpose(0, 1))
+	logits = torch.matmul(input_tensor, output_weights.data.transpose(0, 1))
 	logits = logits + bias
 	log_probs = torch.nn.functional.softmax(logits, dim=-1)
 	label_ids = label_ids.view(-1, 1)
