@@ -25,7 +25,6 @@ class Bert(Model):
 		super().__init__(vocab, regularizer)
 		self._use_fp16 = use_fp16
 		self._vocab_bias = nn.Parameter(torch.zeros(vocab.get_vocab_size()))
-		self._type_bias = nn.Parameter(torch.zeros(2))
 		self._text_field_embedder = text_field_embedder
 		self._transformer = transformer
 		hidden_size = transformer.get_output_dim()
@@ -39,6 +38,7 @@ class Bert(Model):
 		self._feedforward.bias.data.fill_(0)
 		self._next_sentence_feedforward.bias.data.fill_(0)
 		self._masked_lm_feedforward.bias.data.fill_(0)
+		self._vocab_bias.data.fill_(0)
 		self._masked_lm_accuracy = CategoricalAccuracy()
 		self._next_sentence_accuracy = CategoricalAccuracy()
 		self._loss = torch.nn.CrossEntropyLoss()
@@ -100,7 +100,7 @@ class Bert(Model):
 		if next_sentence_labels is not None:
 			(next_sentence_loss, next_sentence_example_loss,
 			 next_sentence_log_probs) = get_next_sentence_output(self._use_fp16,
-				pooled_output, self._next_sentence_feedforward, self._type_bias, next_sentence_labels)
+				pooled_output, self._next_sentence_feedforward, next_sentence_labels)
 			output_dict['next_sentence_loss'] = next_sentence_loss
 			output_dict['next_sentence_example_loss'] = next_sentence_example_loss
 			output_dict['next_sentence_log_probs'] = next_sentence_log_probs
@@ -123,7 +123,7 @@ def get_masked_lm_output(use_fp16, input_tensor, norm_layer, bias, masked_lm_fee
 	input_tensor = norm_layer(input_tensor)
 	logits = torch.matmul(input_tensor, output_weights.data.transpose(0, 1))
 	logits = logits + bias
-	log_probs = torch.nn.functional.softmax(logits, dim=-1)
+	log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
 	label_ids = label_ids.view(-1, 1)
 	label_weights = label_weights.view(-1)
 	if use_fp16:
@@ -147,12 +147,12 @@ def get_masked_lm_output(use_fp16, input_tensor, norm_layer, bias, masked_lm_fee
 	return (loss, per_example_loss, log_probs)
 
 
-def get_next_sentence_output(use_fp16, input_tensor, next_sentence_feedforward, bias, labels):
+def get_next_sentence_output(use_fp16, input_tensor, next_sentence_feedforward, labels):
 	"""Get loss and log probs for the next sentence prediction."""
 	# Simple binary classification. Note that 0 is "next sentence" and 1 is
 	# "random sentence". This weight matrix is not used after pre-training.
-	logits = next_sentence_feedforward(input_tensor) + bias
-	log_probs = torch.nn.functional.softmax(logits, dim=-1)
+	logits = next_sentence_feedforward(input_tensor)
+	log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
 	labels = labels.view(-1, 1)
 	if labels.is_cuda:
 		one_hot_labels = torch.cuda.FloatTensor(labels.size(0), 2, device=util.get_device_of(labels))
