@@ -3,6 +3,7 @@ from typing import Dict, Iterable, List
 import logging
 import random
 import time
+import csv
 import collections
 from typing import Iterator
 
@@ -19,6 +20,8 @@ from numpy import array
 import six
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+
+SlotInstance = collections.namedtuple("SlotInstance", ["start_index", "end_index", "slot_id"])
 
 def convert_to_unicode(text):
 	"""Converts `text` to Unicode (if it's not already), assuming utf-8 input."""
@@ -39,12 +42,24 @@ def convert_to_unicode(text):
 	else:
 		raise ValueError("Not running on Python2 or Python 3?")
 
+def parse_slots_string(raw_slots):
+	slots = raw_slots.split(',')
+	res = []
+	for slot in slots:
+		parts = slot.split(':')
+		start = int(parts[0])
+		end = int(parts[1])
+		slot_id = parts[2]
+		res.append(SlotInstance(start_index=start, end_index=end, slot_id=slot_id))
+	return res
+
 @DatasetReader.register("intent_slot_reader")
 class IntentSlotDatasetReader(DatasetReader):
 	def __init__(self, max_seq_length: int,
 				 lazy: bool = False,
 				 coding_scheme: str = "IOB1",
 				 label_namespace: str = "labels",
+				 tag_namespace: str = "tags",
 				 tokenizer: Tokenizer = None,
 				 token_indexers: Dict[str, TokenIndexer] = None) -> None:
 		super().__init__(lazy)
@@ -52,6 +67,7 @@ class IntentSlotDatasetReader(DatasetReader):
 		self.lazy = lazy
 		self.coding_scheme = coding_scheme
 		self.label_namespace = label_namespace
+		self.tag_namespace = tag_namespace
 		self._original_coding_scheme = "IOB1"
 		self._tokenizer = tokenizer or WordTokenizer()
 		self._token_indexers = token_indexers or {"tokens": SingleIdTokenIndexer()}
@@ -72,35 +88,42 @@ class IntentSlotDatasetReader(DatasetReader):
 				raw_slots = parts[1]
 				raw_query = parts[2]
 				tokens = self._tokenizer.tokenize(raw_query)
+				tags = parse_slots_string(raw_slots)
 				yield self.text_to_instance(tokens, tags, label)
 
 
 	def text_to_instance(self, tokens, tags, label) -> Instance:
-		tokens = []
+		sequence = TextField(tokens, self._token_indexers)
 		segment_ids = []
-		tokens.append(Token("[BEGIN]"))
-		segment_ids.append(0)
-		for token in tokens_a:
-			tokens.append(token)
-			segment_ids.append(0)
-
-		tokens.append(Token("[END]"))
-		segment_ids.append(0)
-
-		for token in tokens_b:
-			tokens.append(token)
-			segment_ids.append(1)
-		tokens.append(Token("[SEP]"))
-		segment_ids.append(1)
+		tag_ids = []
+		index = 0
+		cur_index = 0
+		tags.append(SlotInstance(start_index=1000, end_index=1001, slot_id='fake_slot_id'))
+		slot = tags[index]
+		# skip first [CLS] token
+		i = 1
+		while i < len(tokens):
+			token = tokens[i]
+			if cur_index + len(token.text) <= slot.start_index:
+				tag_ids.append('O')
+				cur_index = cur_index + len(token.text)
+			elif cur_index >= slot.end_index:
+				index = index + 1
+				slot = tags[index]
+				i = i - 1
+			else:
+				if tag_ids[-1] == 'O':
+					tag_ids.append('B_' + slot.slot_id)
+				else:
+					tag_ids.append('I_' + slot.slot_id)
+				cur_index = cur_index + len(token.text)
+			i = i + 1
 		input_mask = [1] * len(tokens)
-		(tokens, masked_lm_positions,
-		 masked_lm_labels) = self.create_masked_lm_predictions(
-			tokens, dictionary)
-		masked_lm_weights = [1.0] * len(masked_lm_positions)
 		fields: Dict[str, Field] = {}
+		fields['slot_tags'] = SequenceLabelField(tag_ids, sequence, "slot_tags")
+		fields["metadata"] = MetadataField({"words": [x.text for x in tokens]})
 		fields["input_mask"] = ArrayField(array(input_mask))
-		fields['tokens'] = TextField(tokens, self._token_indexers)
-		fields['segment_ids'] = ArrayField(array(segment_ids))
-		fields['labels'] = LabelField(label, label_namespace='labels')
-		fields['masked_lm_labels'] = TextField(masked_lm_labels, self._token_indexers)
+		fields['tokens'] = sequence
+		fields['labels'] = LabelField(label, label_namespace=self.label_namespace)
+		fields['tags'] = SequenceLabelField(tag_ids, sequence, self.tag_namespace)
 		return Instance(fields)

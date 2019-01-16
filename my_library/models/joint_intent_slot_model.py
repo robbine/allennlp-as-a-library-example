@@ -27,6 +27,7 @@ class JointIntentSlotModel(Model):
                  constrain_crf_decoding: bool = None,
                  calculate_span_f1: bool = None,
                  dropout: Optional[float] = None,
+                 wait_user_input = False,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super().__init__(vocab, regularizer)
@@ -38,6 +39,10 @@ class JointIntentSlotModel(Model):
         self.num_intents = self.vocab.get_vocab_size(label_namespace)
         self.num_tags = self.vocab.get_vocab_size(tag_namespace)
         hidden_size = transformer.get_output_dim()
+        if dropout:
+            self.dropout = torch.nn.Dropout(dropout)
+        else:
+            self.dropout = None
 
         # if  constrain_crf_decoding and calculate_span_f1 are not
         # provided, (i.e., they're None), set them to True
@@ -63,18 +68,18 @@ class JointIntentSlotModel(Model):
                 include_start_end_transitions=include_start_end_transitions
         )
         self._feedforward = nn.Linear(transformer.get_output_dim(), hidden_size)
-        self._intent_feedforward = nn.Linear(hidden_size, 2)
-        self._masked_lm_feedforward = nn.Linear(transformer.get_output_dim(), text_field_embedder.get_output_dim())
+        self._intent_feedforward = nn.Linear(hidden_size, self.num_intents)
+        self._tag_feedforward = nn.Linear(transformer.get_output_dim(), self.num_tags)
         self._norm_layer = nn.LayerNorm(text_field_embedder.get_output_dim())
         torch.nn.init.xavier_uniform(self._feedforward.weight)
-        torch.nn.init.xavier_uniform(self._next_sentence_feedforward.weight)
-        torch.nn.init.xavier_uniform(self._masked_lm_feedforward.weight)
+        torch.nn.init.xavier_uniform(self._intent_feedforward.weight)
+        torch.nn.init.xavier_uniform(self._tag_feedforward.weight)
         self._feedforward.bias.data.fill_(0)
-        self._next_sentence_feedforward.bias.data.fill_(0)
-        self._masked_lm_feedforward.bias.data.fill_(0)
-        self._masked_lm_accuracy = CategoricalAccuracy()
-        self._next_sentence_accuracy = CategoricalAccuracy()
-        self._loss = torch.nn.CrossEntropyLoss()
+        self._intent_feedforward.bias.data.fill_(0)
+        self._tag_feedforward.bias.data.fill_(0)
+        self._intent_accuracy = CategoricalAccuracy()
+        self._intent_accuracy_3 = CategoricalAccuracy(top_k = 3)
+        self._intent_loss = torch.nn.CrossEntropyLoss()
         self.calculate_span_f1 = calculate_span_f1
         if calculate_span_f1:
             if not label_encoding:
@@ -93,49 +98,65 @@ class JointIntentSlotModel(Model):
         # for name, p in self.named_parameters():
         #     print(name, p.size())
         initializer(self)
+        if wait_user_input:
+            input("Press Enter to continue...")
 
     def forward(self, tokens: Dict[str, torch.LongTensor],
                 input_mask: torch.LongTensor,
-                segment_ids: torch.LongTensor,
-                next_sentence_labels: torch.FloatTensor,
-                masked_lm_positions: torch.LongTensor,
-                masked_lm_weights: torch.LongTensor,
-                masked_lm_labels: Dict[str, torch.LongTensor]) -> Dict[str, torch.Tensor]:
+                tags: torch.LongTensor = None,
+                labels: torch.LongTensor = None,
+                metadata: List[Dict[str, Any]] = None,
+                # pylint: disable=unused-argument
+                **kwargs) -> Dict[str, torch.Tensor]:
+        mask = input_mask.float()
         embedded_tokens = self._text_field_embedder(tokens)
         transformed_tokens = self._transformer(embedded_tokens, input_mask, segment_ids)
         first_token_tensor = transformed_tokens[:, 0, :]
+        encoded_text = transformed_tokens[:, 1:, :]
         pooled_output = torch.tanh(self._feedforward(first_token_tensor))
-        output_dict = {'encoded_layer': transformed_tokens, 'pooled_output': pooled_output}
-        masked_lm_loss = None
-        next_sentence_loss = None
-        if masked_lm_labels is not None:
-            (masked_lm_loss,
-             masked_lm_example_loss, masked_lm_log_probs) = get_slot_output(self._use_fp16,
-                transformed_tokens, self._norm_layer, self._masked_lm_feedforward,
-                masked_lm_positions.long(), masked_lm_labels['tokens'], masked_lm_weights)
-            output_dict['masked_lm_loss'] = masked_lm_loss
-            output_dict['masked_lm_example_loss'] = masked_lm_example_loss
-            output_dict['masked_lm_log_probs'] = masked_lm_log_probs
-            self._masked_lm_accuracy(masked_lm_log_probs.float(), masked_lm_labels["tokens"].view(-1))
-        if next_sentence_labels is not None:
-            (next_sentence_loss, next_sentence_example_loss,
-             next_sentence_log_probs) = get_intent_output(self._use_fp16,
-                pooled_output, self._next_sentence_feedforward, next_sentence_labels)
-            output_dict['next_sentence_loss'] = next_sentence_loss
-            output_dict['next_sentence_example_loss'] = next_sentence_example_loss
-            output_dict['next_sentence_log_probs'] = next_sentence_log_probs
-            self._next_sentence_accuracy(next_sentence_log_probs.float(), next_sentence_labels)
-        output_dict["loss"] = masked_lm_loss
-        return output_dict
+        tag_logits = self._tag_feedforward(encoded_text)
+        best_paths = self.crf.viterbi_tags(logits, input_mask)
+        intent_logits = self._intent_feedforward(first_token_tensor)
+        intent_probs = torch.nn.functional.softmax(intent_logits, dim=-1)
+        # Just get the tags and ignore the score.
+        predicted_tags = [x for x, y in best_paths]
+        output = {'tag_logits': tag_logits, 'mask': input_mask, 'tags': predicted_tags}
+        if tags is not None:
+            # Add negative log-likelihood as loss
+            log_likelihood = self.crf(logits, tags, input_mask)
+            output["slot_loss"] = -log_likelihood
+
+            # Represent viterbi tags as "class probabilities" that we can
+            # feed into the metrics
+            class_probabilities = logits * 0.
+            for i, instance_tags in enumerate(predicted_tags):
+                for j, tag_id in enumerate(instance_tags):
+                    class_probabilities[i, j, tag_id] = 1
+
+            for metric in self.metrics.values():
+                metric(class_probabilities, tags, mask)
+            if self.calculate_span_f1:
+                self._f1_metric(class_probabilities, tags, mask)
+        if labels is not None:
+            output["intents_loss"] = self._intent_loss(intent_logits, labels.long().view(-1))
+            self._intent_accuracy(label_logits, labels)
+            self._intent_accuracy_3(label_logits, labels)
+        if metadata is not None:
+            output["words"] = [x["words"] for x in metadata]
+
+        output["loss"] = output["slot_loss"] + output["intents_loss"]
+        return output
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
-        return {
-            'accuracy': self._masked_lm_accuracy.get_metric(reset),
-            'next_sentence_accuracy': self._next_sentence_accuracy.get_metric(reset)
-        }
+        metrics_to_return = {metric_name: metric.get_metric(reset) for
+                             metric_name, metric in self.metrics.items()}
 
-    def get_slot_output(use_fp16, input_tensor, norm_layer, slot_feedforward, label_ids, label_weights):
-        pass
-
-    def get_intent_output(use_fp16, input_tensor, intent_feedforward, labels):
-        pass
+        if self.calculate_span_f1:
+            f1_dict = self._f1_metric.get_metric(reset=reset)
+            if self._verbose_metrics:
+                metrics_to_return.update(f1_dict)
+            else:
+                metrics_to_return.update({
+                        x: y for x, y in f1_dict.items() if
+                        "overall" in x})
+        return metrics_to_return

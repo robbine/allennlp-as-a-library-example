@@ -63,7 +63,8 @@
             "use_fp16": false,
             "value_depth": 1024
         },
-        "use_fp16": false
+        "wait_user_input": true,
+        "use_fp16": false,
     },
     "train_data_path": "/home/icepine.hans/data/bert_shenma_data.train.txt",
     "validation_data_path": "/home/icepine.hans/data/bert_shenma_data.validate.txt",
@@ -76,7 +77,7 @@
         "num_epochs": 80,
         "optimizer": {
             "type": "bert_adam",
-            "lr": 1e-05
+            "lr": 0.00001
         },
         "patience": 5,
         "validation_metric": "-loss"

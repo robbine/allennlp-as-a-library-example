@@ -20,6 +20,7 @@ class Bert(Model):
 	def __init__(self, vocab: Vocabulary, use_fp16,
 				 text_field_embedder: TextFieldEmbedder,
 				 transformer: Seq2SeqEncoder,
+				 wait_user_input = False,
 				 initializer: InitializerApplicator = InitializerApplicator(),
 				 regularizer: Optional[RegularizerApplicator] = None) -> None:
 		super().__init__(vocab, regularizer)
@@ -47,6 +48,8 @@ class Bert(Model):
 		# for name, p in self.named_parameters():
 		# 	print(name, p.size())
 		initializer(self)
+		if wait_user_input:
+			input("Press Enter to continue...")
 
 	def partial_half(self):
 		def to_half(t):
