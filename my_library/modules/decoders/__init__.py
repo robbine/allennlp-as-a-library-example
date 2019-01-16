@@ -1,0 +1,1 @@
+from my_library.modules.decoders.intent_slot_decoder import IntentSlotModelDecoder
