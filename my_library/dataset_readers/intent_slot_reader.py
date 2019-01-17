@@ -43,11 +43,12 @@ def convert_to_unicode(text):
 		raise ValueError("Not running on Python2 or Python 3?")
 
 def parse_slots_string(raw_slots):
+	if raw_slots == '':
+		return []
 	slots = raw_slots.split(',')
 	res = []
 	for slot in slots:
 		parts = slot.split(':')
-		# always add offset 1 since due to BOS symbol
 		start = int(parts[0])
 		end = int(parts[1])
 		slot_id = parts[2]
@@ -75,6 +76,7 @@ class IntentSlotDatasetReader(DatasetReader):
 		self.rng = random.Random(time.time())
 
 	def _read(self, input_file: str):
+		all_records = []
 		with open(cached_path(input_file), "r") as reader:
 			for line in reader:
 				line = convert_to_unicode(line)
@@ -85,13 +87,28 @@ class IntentSlotDatasetReader(DatasetReader):
 				if len(parts) != 3:
 					logger.info('wrong text format '.format(line))
 					continue
-				label = parts[0]
-				raw_slots = parts[1]
-				raw_query = parts[2]
+				all_records.append(parts)
+		self.rng.shuffle(all_records)
+		instances = []
+		if self.lazy:
+			for record in all_records:
+				label = record[0]
+				raw_slots = record[1]
+				raw_query = record[2]
 				tokens = self._tokenizer.tokenize(raw_query)
 				tags = parse_slots_string(raw_slots)
 				yield self.text_to_instance(tokens, tags, label)
-
+		else:
+			for record in all_records:
+				label = record[0]
+				raw_slots = record[1]
+				raw_query = record[2]
+				tokens = self._tokenizer.tokenize(raw_query)
+				tags = parse_slots_string(raw_slots)
+				instances.append(self.text_to_instance(tokens, tags, label))
+			self.rng.shuffle(instances)
+			for instance in instances:
+				yield instance
 
 	def text_to_instance(self, tokens, tags, label) -> Instance:
 		sequence = TextField(tokens, self._token_indexers)

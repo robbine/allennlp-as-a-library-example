@@ -13,7 +13,7 @@ from allennlp.data import Vocabulary
 from allennlp.modules import Seq2SeqEncoder, TextFieldEmbedder
 from allennlp.modules.conditional_random_field import allowed_transitions
 from allennlp.nn import InitializerApplicator, RegularizerApplicator
-from allennlp.training.metrics import CategoricalAccuracy, SpanBasedF1Measure
+from allennlp.training.metrics import CategoricalAccuracy, SpanBasedF1Measure, F1Measure
 from allennlp.modules import FeedForward, ConditionalRandomField
 from allennlp.nn import util
 
@@ -31,6 +31,7 @@ class JointIntentSlotModel(Model):
                  include_start_end_transitions: bool = True,
                  constrain_crf_decoding: bool = None,
                  calculate_span_f1: bool = None,
+                 calculate_intent_f1: bool = None,
                  dropout: Optional[float] = None,
                  wait_user_input = False,
                  verbose_metrics: bool = False,
@@ -87,11 +88,12 @@ class JointIntentSlotModel(Model):
         self._intent_accuracy = CategoricalAccuracy()
         self._intent_accuracy_3 = CategoricalAccuracy(top_k = 3)
         self.metrics = {
-                "slot_accuracy": CategoricalAccuracy(),
-                "slot_accuracy3": CategoricalAccuracy(top_k=3)
+                "slot_acc": CategoricalAccuracy(),
+                "slot_acc3": CategoricalAccuracy(top_k=3)
         }
         self._intent_loss = torch.nn.CrossEntropyLoss()
         self.calculate_span_f1 = calculate_span_f1
+        self.calculate_intent_f1 = calculate_intent_f1
         if calculate_span_f1:
             if not label_encoding:
                 raise ConfigurationError("calculate_span_f1 is True, but "
@@ -155,8 +157,8 @@ class JointIntentSlotModel(Model):
                 for j, tag_id in enumerate(instance_tags):
                     class_probabilities[i, j, tag_id] = 1
             mask = mask.float()
-            for metric in self.metrics.values():
-                metric(class_probabilities, tags.contiguous(), mask)
+            # for metric in self.metrics.values():
+            #     metric(class_probabilities, tags.contiguous(), mask)
             if self.calculate_span_f1:
                 self._f1_metric(class_probabilities, tags, mask)
         if labels is not None:
@@ -170,8 +172,7 @@ class JointIntentSlotModel(Model):
         return output
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
-        metrics_to_return = {metric_name: metric.get_metric(reset) for
-                             metric_name, metric in self.metrics.items()}
+        metrics_to_return = {}
 
         if self.calculate_span_f1:
             f1_dict = self._f1_metric.get_metric(reset=reset)
@@ -180,7 +181,7 @@ class JointIntentSlotModel(Model):
             else:
                 metrics_to_return.update({
                         x: y for x, y in f1_dict.items() if
-                        "overall" in x})
-        metrics_to_return['intent_accuracy'] = self._intent_accuracy.get_metric(reset)
-        metrics_to_return['intent_accuracy_3'] = self._intent_accuracy_3.get_metric(reset)
+                        x == 'f1-measure-overall'})
+        metrics_to_return['i_acc'] = self._intent_accuracy.get_metric(reset)
+        metrics_to_return['i_acc3'] = self._intent_accuracy_3.get_metric(reset)
         return metrics_to_return
