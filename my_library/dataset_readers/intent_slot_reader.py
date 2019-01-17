@@ -11,7 +11,7 @@ from allennlp.common import Params, Tqdm
 from allennlp.common.file_utils import cached_path
 from allennlp.data import Field, Token
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
-from allennlp.data.fields import TextField, ArrayField, LabelField
+from allennlp.data.fields import TextField, ArrayField, LabelField, SequenceLabelField, Field, MetadataField
 from allennlp.data.instance import Instance
 from allennlp.data.tokenizers import Tokenizer, WordTokenizer
 from allennlp.data.token_indexers import TokenIndexer
@@ -47,6 +47,7 @@ def parse_slots_string(raw_slots):
 	res = []
 	for slot in slots:
 		parts = slot.split(':')
+		# always add offset 1 since due to BOS symbol
 		start = int(parts[0])
 		end = int(parts[1])
 		slot_id = parts[2]
@@ -94,13 +95,13 @@ class IntentSlotDatasetReader(DatasetReader):
 
 	def text_to_instance(self, tokens, tags, label) -> Instance:
 		sequence = TextField(tokens, self._token_indexers)
-		tag_ids = []
+		tag_ids = ['O', 'O']
 		index = 0
 		cur_index = 0
 		tags.append(SlotInstance(start_index=1000, end_index=1001, slot_id='fake_slot_id'))
 		slot = tags[index]
-		# skip first [CLS] token
-		i = 1
+		# skip leading [CLS] BOS token
+		i = 2
 		while i < len(tokens):
 			token = tokens[i]
 			if cur_index + len(token.text) <= slot.start_index:
@@ -111,10 +112,10 @@ class IntentSlotDatasetReader(DatasetReader):
 				slot = tags[index]
 				i = i - 1
 			else:
-				if tag_ids[-1] == 'O':
-					tag_ids.append('B_' + slot.slot_id)
+				if len(tag_ids) == 0 or tag_ids[-1] == 'O':
+					tag_ids.append('B-' + slot.slot_id)
 				else:
-					tag_ids.append('I_' + slot.slot_id)
+					tag_ids.append('I-' + slot.slot_id)
 				cur_index = cur_index + len(token.text)
 			i = i + 1
 		input_mask = [1] * len(tokens)

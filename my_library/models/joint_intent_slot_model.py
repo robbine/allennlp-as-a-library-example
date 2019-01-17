@@ -33,12 +33,14 @@ class JointIntentSlotModel(Model):
                  calculate_span_f1: bool = None,
                  dropout: Optional[float] = None,
                  wait_user_input = False,
+                 verbose_metrics: bool = False,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super().__init__(vocab, regularizer)
 
         self.label_namespace = label_namespace
         self._use_fp16 = use_fp16
+        self._verbose_metrics = verbose_metrics
         self._text_field_embedder = text_field_embedder
         self._transformer = transformer
         self.num_intents = self.vocab.get_vocab_size(label_namespace)
@@ -97,11 +99,6 @@ class JointIntentSlotModel(Model):
             self._f1_metric = SpanBasedF1Measure(vocab,
                                                  tag_namespace=tag_namespace,
                                                  label_encoding=label_encoding)
-        elif constraint_type is not None:
-            # Maintain deprecated behavior if constraint_type is provided
-            self._f1_metric = SpanBasedF1Measure(vocab,
-                                                 tag_namespace=tag_namespace,
-                                                 label_encoding=constraint_type)
         if self._use_fp16:
             self.half()
         # for name, p in self.named_parameters():
@@ -132,14 +129,14 @@ class JointIntentSlotModel(Model):
                 metadata: List[Dict[str, Any]] = None,
                 # pylint: disable=unused-argument
                 **kwargs) -> Dict[str, torch.Tensor]:
-        mask = input_mask.float()
         embedded_tokens = self._text_field_embedder(tokens)
         transformed_tokens = self._transformer(embedded_tokens, input_mask)
         first_token_tensor = transformed_tokens[:, 0, :]
         encoded_text = transformed_tokens[:, 1:, :]
         pooled_output = torch.tanh(self._feedforward(first_token_tensor))
         tag_logits = self._tag_feedforward(encoded_text)
-        best_paths = self.crf.viterbi_tags(logits, input_mask)
+        mask = input_mask[:, 1:].long()
+        best_paths = self.crf.viterbi_tags(tag_logits, mask)
         intent_logits = self._intent_feedforward(pooled_output)
         intent_probs = torch.nn.functional.softmax(intent_logits, dim=-1)
         # Just get the tags and ignore the score.
@@ -147,24 +144,25 @@ class JointIntentSlotModel(Model):
         output = {'tag_logits': tag_logits, 'mask': input_mask, 'tags': predicted_tags}
         if tags is not None:
             # Add negative log-likelihood as loss
-            log_likelihood = self.crf(tag_logits, tags, input_mask)
+            tags = tags[:, 1:]
+            log_likelihood = self.crf(tag_logits, tags, mask)
             output["slot_loss"] = -log_likelihood
 
             # Represent viterbi tags as "class probabilities" that we can
             # feed into the metrics
-            class_probabilities = logits * 0.
+            class_probabilities = tag_logits * 0.
             for i, instance_tags in enumerate(predicted_tags):
                 for j, tag_id in enumerate(instance_tags):
                     class_probabilities[i, j, tag_id] = 1
-
+            mask = mask.float()
             for metric in self.metrics.values():
-                metric(class_probabilities, tags, mask)
+                metric(class_probabilities, tags.contiguous(), mask)
             if self.calculate_span_f1:
                 self._f1_metric(class_probabilities, tags, mask)
         if labels is not None:
             output["intents_loss"] = self._intent_loss(intent_logits, labels.long().view(-1))
-            self._intent_accuracy(label_logits, labels)
-            self._intent_accuracy_3(label_logits, labels)
+            self._intent_accuracy(intent_logits, labels)
+            self._intent_accuracy_3(intent_logits, labels)
         if metadata is not None:
             output["words"] = [x["words"] for x in metadata]
 
