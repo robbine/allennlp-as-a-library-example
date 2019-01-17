@@ -94,7 +94,6 @@ class IntentSlotDatasetReader(DatasetReader):
 
 	def text_to_instance(self, tokens, tags, label) -> Instance:
 		sequence = TextField(tokens, self._token_indexers)
-		segment_ids = []
 		tag_ids = []
 		index = 0
 		cur_index = 0

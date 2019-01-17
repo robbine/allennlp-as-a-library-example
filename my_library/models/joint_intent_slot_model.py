@@ -1,4 +1,8 @@
 import logging
+from typing import Dict, Optional, List, Any
+import warnings
+
+from overrides import overrides
 from typing import Dict, Optional
 
 from allennlp.models import Model
@@ -7,9 +11,10 @@ import torch.nn as nn
 from torch.nn.functional import nll_loss
 from allennlp.data import Vocabulary
 from allennlp.modules import Seq2SeqEncoder, TextFieldEmbedder
+from allennlp.modules.conditional_random_field import allowed_transitions
 from allennlp.nn import InitializerApplicator, RegularizerApplicator
-from allennlp.training.metrics import CategoricalAccuracy
-from allennlp.modules import FeedForward
+from allennlp.training.metrics import CategoricalAccuracy, SpanBasedF1Measure
+from allennlp.modules import FeedForward, ConditionalRandomField
 from allennlp.nn import util
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
@@ -57,8 +62,8 @@ class JointIntentSlotModel(Model):
             if not label_encoding:
                 raise ConfigurationError("constrain_crf_decoding is True, but "
                                          "no label_encoding was specified.")
-            labels = self.vocab.get_index_to_token_vocabulary(label_namespace)
-            constraints = allowed_transitions(label_encoding, labels)
+            tag_labels = self.vocab.get_index_to_token_vocabulary(tag_namespace)
+            constraints = allowed_transitions(label_encoding, tag_labels)
         else:
             constraints = None
 
@@ -79,6 +84,10 @@ class JointIntentSlotModel(Model):
         self._tag_feedforward.bias.data.fill_(0)
         self._intent_accuracy = CategoricalAccuracy()
         self._intent_accuracy_3 = CategoricalAccuracy(top_k = 3)
+        self.metrics = {
+                "slot_accuracy": CategoricalAccuracy(),
+                "slot_accuracy3": CategoricalAccuracy(top_k=3)
+        }
         self._intent_loss = torch.nn.CrossEntropyLoss()
         self.calculate_span_f1 = calculate_span_f1
         if calculate_span_f1:
@@ -101,6 +110,21 @@ class JointIntentSlotModel(Model):
         if wait_user_input:
             input("Press Enter to continue...")
 
+    @overrides
+    def decode(self, output_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """
+        Converts the tag ids to the actual tags.
+        ``output_dict["tags"]`` is a list of lists of tag_ids,
+        so we use an ugly nested list comprehension.
+        """
+        output_dict["tags"] = [
+                [self.vocab.get_token_from_index(tag, namespace=self.tag_namespace)
+                 for tag in instance_tags]
+                for instance_tags in output_dict["tags"]
+        ]
+
+        return output_dict
+
     def forward(self, tokens: Dict[str, torch.LongTensor],
                 input_mask: torch.LongTensor,
                 tags: torch.LongTensor = None,
@@ -110,20 +134,20 @@ class JointIntentSlotModel(Model):
                 **kwargs) -> Dict[str, torch.Tensor]:
         mask = input_mask.float()
         embedded_tokens = self._text_field_embedder(tokens)
-        transformed_tokens = self._transformer(embedded_tokens, input_mask, segment_ids)
+        transformed_tokens = self._transformer(embedded_tokens, input_mask)
         first_token_tensor = transformed_tokens[:, 0, :]
         encoded_text = transformed_tokens[:, 1:, :]
         pooled_output = torch.tanh(self._feedforward(first_token_tensor))
         tag_logits = self._tag_feedforward(encoded_text)
         best_paths = self.crf.viterbi_tags(logits, input_mask)
-        intent_logits = self._intent_feedforward(first_token_tensor)
+        intent_logits = self._intent_feedforward(pooled_output)
         intent_probs = torch.nn.functional.softmax(intent_logits, dim=-1)
         # Just get the tags and ignore the score.
         predicted_tags = [x for x, y in best_paths]
         output = {'tag_logits': tag_logits, 'mask': input_mask, 'tags': predicted_tags}
         if tags is not None:
             # Add negative log-likelihood as loss
-            log_likelihood = self.crf(logits, tags, input_mask)
+            log_likelihood = self.crf(tag_logits, tags, input_mask)
             output["slot_loss"] = -log_likelihood
 
             # Represent viterbi tags as "class probabilities" that we can
@@ -159,4 +183,6 @@ class JointIntentSlotModel(Model):
                 metrics_to_return.update({
                         x: y for x, y in f1_dict.items() if
                         "overall" in x})
+        metrics_to_return['intent_accuracy'] = self._intent_accuracy.get_metric(reset)
+        metrics_to_return['intent_accuracy_3'] = self._intent_accuracy_3.get_metric(reset)
         return metrics_to_return

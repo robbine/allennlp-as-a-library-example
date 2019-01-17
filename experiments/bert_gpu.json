@@ -32,7 +32,7 @@
       "use_fp16": false,
       "tokens": {
         "type": "embedding_v2",
-        "pretrained_file": "/home/icepine.hans/data/Tencent_AILab_ChineseEmbedding.tar.gz",
+        "pretrained_file": "/home/icepine.hans/data/ChineseEmbedding.tar.gz",
         "padding_index": 0,
         "embedding_dim": 200,
         "trainable": true

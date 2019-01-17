@@ -1,7 +1,7 @@
 {
     "dataset_reader": {
         "type": "bert_reader",
-        "dupe_factor": 2,
+        "dupe_factor": 1,
         "lazy": false,
         "masked_lm_prob": 0.15,
         "max_predictions_per_seq": 3,
@@ -41,7 +41,7 @@
                 "type": "embedding_v2",
                 "embedding_dim": 200,
                 "padding_index": 0,
-                "pretrained_file": "/home/icepine.hans/data/Tencent_AILab_ChineseEmbedding.tar.gz",
+                "pretrained_file": "/home/icepine.hans/data/ChineseEmbedding.tar.gz",
                 "trainable": true
             },
             "use_fp16": false

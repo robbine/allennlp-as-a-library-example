@@ -83,6 +83,8 @@ class Transformer(Seq2SeqEncoder):
 				 type_vocab_size: int = 3,
 				 attention_dropout_prob: float = 0.1,
 				 dropout_prob: float = 0.1,
+				 use_token_type=True,
+				 use_position_embeddings=True,
 				 attention_type: str = 'dot_product',
 				 max_relative_position=5,
 				 heads_share_relative_embedding=True,
@@ -92,6 +94,8 @@ class Transformer(Seq2SeqEncoder):
 		super(Transformer, self).__init__()
 		hidden_size = input_size
 		self._use_fp16 = use_fp16
+		self._use_token_type = use_token_type
+		self._use_position_embeddings = use_position_embeddings
 		self._norm_layer = nn.LayerNorm(input_size)
 		self._token_type_embedding = EmbeddingV2(self._use_fp16, type_vocab_size, input_size)
 		self._position_embedding = EmbeddingV2(self._use_fp16, max_position_embeddings, input_size)
@@ -185,14 +189,14 @@ class Transformer(Seq2SeqEncoder):
 	@overrides
 	def forward(self, embedded_tokens: torch.FloatTensor,
 				input_mask: torch.LongTensor,
-				segment_ids: torch.LongTensor):  # pylint: disable=arguments-differ
+				segment_ids: torch.LongTensor = None):  # pylint: disable=arguments-differ
 		embedded_tokens = common_attention.embedding_postprocessor(embedded_tokens,
 																   input_mask.long(),
 																   self._use_fp16,
-																   token_type_ids=segment_ids.long(),
-																   use_token_type=True,
+																   token_type_ids=segment_ids,
+																   use_token_type=self._use_token_type,
 																   token_type_embedding=self._token_type_embedding,
-																   use_position_embeddings=True,
+																   use_position_embeddings=self._use_position_embeddings,
 																   position_embedding=self._position_embedding,
 																   norm_layer=self._norm_layer,
 																   dropout=self._dropout)

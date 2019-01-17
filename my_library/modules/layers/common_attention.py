@@ -1131,7 +1131,7 @@ def embedding_postprocessor(input_tensor,
 							 "`use_token_type` is True.")
 		# This vocab will be small so we always do one-hot here, since it is always
 		# faster for a small vocabulary.
-		token_type_embedding_res = token_type_embedding(token_type_ids)
+		token_type_embedding_res = token_type_embedding(token_type_ids.long())
 		if use_fp16:
 			output = torch.add(output, token_type_embedding_res)
 		else:
