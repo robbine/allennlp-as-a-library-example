@@ -40,6 +40,7 @@ class JointIntentSlotModel(Model):
         super().__init__(vocab, regularizer)
 
         self.label_namespace = label_namespace
+        self.tag_namespace = tag_namespace
         self._use_fp16 = use_fp16
         self._verbose_metrics = verbose_metrics
         self._text_field_embedder = text_field_embedder
@@ -78,7 +79,7 @@ class JointIntentSlotModel(Model):
         self._feedforward = nn.Linear(transformer.get_output_dim(), hidden_size)
         self._intent_feedforward = nn.Linear(hidden_size, self.num_intents)
         self._tag_feedforward = nn.Linear(transformer.get_output_dim(), self.num_tags)
-        self._norm_layer = nn.LayerNorm(text_field_embedder.get_output_dim())
+        self._norm_layer = nn.LayerNorm(transformer.get_output_dim())
         torch.nn.init.xavier_uniform(self._feedforward.weight)
         torch.nn.init.xavier_uniform(self._intent_feedforward.weight)
         torch.nn.init.xavier_uniform(self._tag_feedforward.weight)
