@@ -71,7 +71,7 @@ def main():
     weights = load_weights(args.serialization_dir, args.weights_file_name, args.embedder_name)
     tokens = load_vocab(args.serialization_dir, args.vocab_file_folder)
     assert len(tokens) == weights.shape[0]
-    save_embedding_file(weights, tokens, args.serialization_dir, args.output_embedding_file)
+    save_embedding_file(weights[1:, :], tokens[1:], args.serialization_dir, args.output_embedding_file)
 
 if __name__ == "__main__":
     sys.exit(main())
