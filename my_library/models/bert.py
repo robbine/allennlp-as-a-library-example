@@ -14,6 +14,12 @@ from allennlp.nn import util
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
+def gelu(x):
+	"""Implementation of the gelu activation function.
+		For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
+		0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
+	"""
+	return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
 
 @Model.register("bert")
 class Bert(Model):
@@ -123,6 +129,7 @@ def get_masked_lm_output(use_fp16, input_tensor, norm_layer, bias, masked_lm_fee
 	"""Get loss and log probs for the masked LM."""
 	input_tensor = gather_indexes(input_tensor, positions)
 	input_tensor = masked_lm_feedforward(input_tensor)
+	input_tensor = gelu(input_tensor)
 	input_tensor = norm_layer(input_tensor)
 	logits = torch.matmul(input_tensor, output_weights.data.transpose(0, 1))
 	logits = logits + bias

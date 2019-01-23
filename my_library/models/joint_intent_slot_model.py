@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional, List, Any, Union
 import warnings
 
 from overrides import overrides
@@ -168,8 +168,12 @@ class JointIntentSlotModel(Model):
             self._intent_accuracy_3(intent_logits, labels)
         if metadata is not None:
             output["words"] = [x["words"] for x in metadata]
-
-        output["loss"] = output["slot_loss"] + output["intents_loss"]
+        if 'slot_loss' in output and 'intents_loss' in output:
+            output["loss"] = output["slot_loss"] + output["intents_loss"]
+        elif 'slot_loss' in output:
+            output["loss"] = output["slot_loss"]
+        elif 'intents_loss' in output:
+            output["loss"] = output["intents_loss"]
         return output
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
@@ -291,13 +295,15 @@ class JointIntentSlotModelGoogleBert(Model):
 
         return output_dict
 
-    def forward(self, tokens: Dict[str, torch.LongTensor],
+    def forward(self, tokens: Union[torch.Tensor, Dict[str, torch.LongTensor]],
                 input_mask: torch.LongTensor,
                 tags: torch.LongTensor = None,
                 labels: torch.LongTensor = None,
                 metadata: List[Dict[str, Any]] = None,
                 # pylint: disable=unused-argument
                 **kwargs) -> Dict[str, torch.Tensor]:
+        if isinstance(tokens, torch.Tensor):
+            tokens = {'tokens': tokens}
         transformed_tokens = self._text_field_embedder(tokens)
         first_token_tensor = transformed_tokens[:, 0, :]
         encoded_text = transformed_tokens[:, 1:, :]
@@ -334,8 +340,17 @@ class JointIntentSlotModelGoogleBert(Model):
         if metadata is not None:
             output["words"] = [x["words"] for x in metadata]
 
-        output["loss"] = output["slot_loss"] + output["intents_loss"]
-        return output
+        if 'slot_loss' in output and 'intents_loss' in output:
+            output["loss"] = output["slot_loss"] + output["intents_loss"]
+        elif 'slot_loss' in output:
+            output["loss"] = output["slot_loss"]
+        elif 'intents_loss' in output:
+            output["loss"] = output["intents_loss"]
+        if 'loss' in output:
+            return output
+        else:
+            print('in predictinggggggg mode {}'.format(type(intent_probs)))
+            return intent_probs.cpu().detach()
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
         metrics_to_return = {}
