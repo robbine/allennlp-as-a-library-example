@@ -95,52 +95,54 @@ class IntentSlotDatasetReader(DatasetReader):
 				label = record[0]
 				raw_slots = record[1]
 				raw_query = record[2]
-				tokens = self._tokenizer.tokenize(raw_query)
 				tags = parse_slots_string(raw_slots)
-				yield self.text_to_instance(tokens, tags, label)
+				yield self.text_to_instance(raw_query, tags, label)
 		else:
 			for record in all_records:
 				label = record[0]
 				raw_slots = record[1]
 				raw_query = record[2]
-				tokens = self._tokenizer.tokenize(raw_query)
 				tags = parse_slots_string(raw_slots)
-				instances.append(self.text_to_instance(tokens, tags, label))
+				instances.append(self.text_to_instance(raw_query, tags, label))
 			self.rng.shuffle(instances)
 			for instance in instances:
 				yield instance
 
-	def text_to_instance(self, tokens, tags, label) -> Instance:
+	def text_to_instance(self, raw_query, tags, label) -> Instance:
+		tokens = self._tokenizer.tokenize(raw_query)
 		sequence = TextField(tokens, self._token_indexers)
-		tag_ids = ['O', 'O']
-		index = 0
-		cur_index = 0
-		tags.append(SlotInstance(start_index=1000, end_index=1001, slot_id='fake_slot_id'))
-		slot = tags[index]
-		# skip leading [CLS] BOS token
-		i = 2
-		while i < len(tokens):
-			token = tokens[i]
-			if cur_index + len(token.text) <= slot.start_index:
-				tag_ids.append('O')
-				cur_index = cur_index + len(token.text)
-			elif cur_index >= slot.end_index:
-				index = index + 1
-				slot = tags[index]
-				i = i - 1
-			else:
-				if len(tag_ids) == 0 or tag_ids[-1] == 'O':
-					tag_ids.append('B-' + slot.slot_id)
+		if tags is not None:
+			tag_ids = ['O', 'O']
+			cur_index = 0
+			index = 0
+			tags.append(SlotInstance(start_index=1000, end_index=1001, slot_id='fake_slot_id'))
+			slot = tags[index]
+			# skip leading [CLS] BOS token
+			i = 2
+			while i < len(tokens):
+				token = tokens[i]
+				if cur_index + len(token.text) <= slot.start_index:
+					tag_ids.append('O')
+					cur_index = cur_index + len(token.text)
+				elif cur_index >= slot.end_index:
+					index = index + 1
+					slot = tags[index]
+					i = i - 1
 				else:
-					tag_ids.append('I-' + slot.slot_id)
-				cur_index = cur_index + len(token.text)
-			i = i + 1
+					if len(tag_ids) == 0 or tag_ids[-1] == 'O':
+						tag_ids.append('B-' + slot.slot_id)
+					else:
+						tag_ids.append('I-' + slot.slot_id)
+					cur_index = cur_index + len(token.text)
+				i = i + 1
 		input_mask = [1] * len(tokens)
 		fields: Dict[str, Field] = {}
-		fields['slot_tags'] = SequenceLabelField(tag_ids, sequence, "slot_tags")
 		fields["metadata"] = MetadataField({"words": [x.text for x in tokens]})
 		fields["input_mask"] = ArrayField(array(input_mask))
 		fields['tokens'] = sequence
-		fields['labels'] = LabelField(label, label_namespace=self.label_namespace)
-		fields['tags'] = SequenceLabelField(tag_ids, sequence, self.tag_namespace)
+		if label is not None:
+		    fields['labels'] = LabelField(label, label_namespace=self.label_namespace)
+		if tags is not None:
+			fields['tags'] = SequenceLabelField(tag_ids, sequence, self.tag_namespace)
+			fields['slot_tags'] = SequenceLabelField(tag_ids, sequence, "slot_tags")
 		return Instance(fields)

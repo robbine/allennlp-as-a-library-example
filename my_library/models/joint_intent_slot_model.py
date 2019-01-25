@@ -4,7 +4,7 @@ import warnings
 
 from overrides import overrides
 from typing import Dict, Optional
-
+import numpy as np
 from allennlp.models import Model
 import torch
 import torch.nn as nn
@@ -122,7 +122,10 @@ class JointIntentSlotModel(Model):
                  for tag in instance_tags]
                 for instance_tags in output_dict["tags"]
         ]
-
+        output_dict['labels'] = [
+            self.vocab.get_token_from_index(instance_label.max(0)[1].item(), namespace=self.label_namespace)
+            for instance_label in output_dict['intent_probs']
+        ]
         return output_dict
 
     def forward(self, tokens: Dict[str, torch.LongTensor],
@@ -144,7 +147,7 @@ class JointIntentSlotModel(Model):
         intent_probs = torch.nn.functional.softmax(intent_logits, dim=-1)
         # Just get the tags and ignore the score.
         predicted_tags = [x for x, y in best_paths]
-        output = {'tag_logits': tag_logits, 'mask': input_mask, 'tags': predicted_tags}
+        output = {'tag_logits': tag_logits, 'mask': input_mask, 'tags': predicted_tags, 'intent_probs': intent_probs}
         if tags is not None:
             # Add negative log-likelihood as loss
             tags = tags[:, 1:]
@@ -292,7 +295,10 @@ class JointIntentSlotModelGoogleBert(Model):
                  for tag in instance_tags]
                 for instance_tags in output_dict["tags"]
         ]
-
+        predictions = output_dict['intent_probs'].cpu().data.numpy()
+        argmax_indices = np.argmax(predictions, axis=-1)
+        labels = [self.vocab.get_token_from_index(x, namespace=self.label_namespace) for x in argmax_indices]
+        output_dict['labels'] = labels
         return output_dict
 
     def forward(self, tokens: Union[torch.Tensor, Dict[str, torch.LongTensor]],
@@ -302,8 +308,6 @@ class JointIntentSlotModelGoogleBert(Model):
                 metadata: List[Dict[str, Any]] = None,
                 # pylint: disable=unused-argument
                 **kwargs) -> Dict[str, torch.Tensor]:
-        if isinstance(tokens, torch.Tensor):
-            tokens = {'tokens': tokens}
         transformed_tokens = self._text_field_embedder(tokens)
         first_token_tensor = transformed_tokens[:, 0, :]
         encoded_text = transformed_tokens[:, 1:, :]
@@ -315,7 +319,7 @@ class JointIntentSlotModelGoogleBert(Model):
         intent_probs = torch.nn.functional.softmax(intent_logits, dim=-1)
         # Just get the tags and ignore the score.
         predicted_tags = [x for x, y in best_paths]
-        output = {'tag_logits': tag_logits, 'mask': input_mask, 'tags': predicted_tags}
+        output = {'tag_logits': tag_logits, 'mask': input_mask, 'tags': predicted_tags, 'intent_probs': intent_probs}
         if tags is not None:
             # Add negative log-likelihood as loss
             tags = tags[:, 1:]
@@ -346,11 +350,7 @@ class JointIntentSlotModelGoogleBert(Model):
             output["loss"] = output["slot_loss"]
         elif 'intents_loss' in output:
             output["loss"] = output["intents_loss"]
-        if 'loss' in output:
-            return output
-        else:
-            print('in predictinggggggg mode {}'.format(type(intent_probs)))
-            return intent_probs.cpu().detach()
+        return output
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
         metrics_to_return = {}
