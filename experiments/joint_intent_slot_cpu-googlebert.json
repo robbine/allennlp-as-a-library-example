@@ -40,7 +40,7 @@
         "constrain_crf_decoding": true,
         "calculate_span_f1": true,
         "include_start_end_transitions": true,
-        "wait_user_input": true,
+        "wait_user_input": false,
         "initializer": [],
         "text_field_embedder": {
             "type": "basic_v2",
@@ -52,9 +52,6 @@
             "use_fp16": false
         },
         "use_fp16": false
-    },
-    "vocabulary": {
-        "non_padded_namespaces": ["*label*", "*tag*"]
     },
     "train_data_path": "/home/icepine.hans/data/bert_intent_slot_data.sample.txt",
     "validation_data_path": "/home/icepine.hans/data/bert_intent_slot_data.validate.txt",

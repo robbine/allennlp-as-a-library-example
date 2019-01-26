@@ -38,7 +38,6 @@ class JointIntentSlotModel(Model):
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super().__init__(vocab, regularizer)
-
         self.label_namespace = label_namespace
         self.tag_namespace = tag_namespace
         self._use_fp16 = use_fp16
