@@ -116,16 +116,33 @@ class JointIntentSlotModel(Model):
         ``output_dict["tags"]`` is a list of lists of tag_ids,
         so we use an ugly nested list comprehension.
         """
-        output_dict["tags"] = [
+        output = {}
+        output_tags = [
                 [self.vocab.get_token_from_index(tag, namespace=self.tag_namespace)
                  for tag in instance_tags]
                 for instance_tags in output_dict["tags"]
         ]
-        output_dict['labels'] = [
-            self.vocab.get_token_from_index(instance_label.max(0)[1].item(), namespace=self.label_namespace)
-            for instance_label in output_dict['intent_probs']
-        ]
-        return output_dict
+        predictions = output_dict['intent_probs'].cpu().data.numpy()
+        argmax_indices = np.argmax(predictions, axis=-1)
+        labels = [self.vocab.get_token_from_index(x, namespace=self.label_namespace) for x in argmax_indices]
+        output['intent'] = labels
+        output["slot"] = []
+        extracted_results = []
+        words = output_dict["words"][0][1:]
+        for tag, word in zip(output_tags[0], words):
+            if tag.startswith('B-'):
+                extracted_results.append([word])
+            elif tag.startswith('I-'):
+                extracted_results[-1].append(word)
+            else:
+                continue
+        for result in extracted_results:
+            output["slot"].append(''.join(result))
+        # output['labels'] = [
+        #     self.vocab.get_token_from_index(instance_label.max(0)[1].item(), namespace=self.label_namespace)
+        #     for instance_label in output_dict['intent_probs']
+        # ]
+        return output
 
     def forward(self, tokens: Dict[str, torch.LongTensor],
                 input_mask: torch.LongTensor,
