@@ -117,15 +117,16 @@ class JointIntentSlotModel(Model):
         so we use an ugly nested list comprehension.
         """
         output = {}
+        top_k = 3
         output_tags = [
                 [self.vocab.get_token_from_index(tag, namespace=self.tag_namespace)
                  for tag in instance_tags]
                 for instance_tags in output_dict["tags"]
         ]
         predictions = output_dict['intent_probs'].cpu().data.numpy()
-        argmax_indices = np.argmax(predictions, axis=-1)
-        labels = [self.vocab.get_token_from_index(x, namespace=self.label_namespace) for x in argmax_indices]
-        output['intent'] = labels
+        argmax_indices = np.argsort(-predictions, axis=-1)[0, :top_k]
+        labels = ['{}:{}'.format(self.vocab.get_token_from_index(x, namespace=self.label_namespace), predictions[0, x]) for x in argmax_indices]
+        output['intent'] = [labels]
         output["slot"] = []
         extracted_results = []
         words = output_dict["words"][0][1:]
@@ -138,10 +139,6 @@ class JointIntentSlotModel(Model):
                 continue
         for result in extracted_results:
             output["slot"].append(''.join(result))
-        # output['labels'] = [
-        #     self.vocab.get_token_from_index(instance_label.max(0)[1].item(), namespace=self.label_namespace)
-        #     for instance_label in output_dict['intent_probs']
-        # ]
         return output
 
     def forward(self, tokens: Dict[str, torch.LongTensor],
@@ -155,7 +152,7 @@ class JointIntentSlotModel(Model):
         transformed_tokens = self._transformer(embedded_tokens, input_mask)
         first_token_tensor = transformed_tokens[:, 0, :]
         encoded_text = transformed_tokens[:, 1:, :]
-        pooled_output = torch.tanh(self._feedforward(first_token_tensor))
+        pooled_output = self._norm_layer(torch.tanh(self._feedforward(first_token_tensor)))
         tag_logits = self._tag_feedforward(encoded_text)
         mask = input_mask[:, 1:].long()
         best_paths = self.crf.viterbi_tags(tag_logits, mask)
@@ -206,8 +203,8 @@ class JointIntentSlotModel(Model):
                 metrics_to_return.update({
                         x: y for x, y in f1_dict.items() if
                         x == 'f1-measure-overall'})
-        metrics_to_return['i_acc'] = self._intent_accuracy.get_metric(reset)
-        metrics_to_return['i_acc3'] = self._intent_accuracy_3.get_metric(reset)
+        metrics_to_return['acc'] = self._intent_accuracy.get_metric(reset)
+        metrics_to_return['acc3'] = self._intent_accuracy_3.get_metric(reset)
         return metrics_to_return
 
 
@@ -306,16 +303,30 @@ class JointIntentSlotModelGoogleBert(Model):
         ``output_dict["tags"]`` is a list of lists of tag_ids,
         so we use an ugly nested list comprehension.
         """
-        output_dict["tags"] = [
+        output = {}
+        top_k = 3
+        output_tags = [
                 [self.vocab.get_token_from_index(tag, namespace=self.tag_namespace)
                  for tag in instance_tags]
                 for instance_tags in output_dict["tags"]
         ]
         predictions = output_dict['intent_probs'].cpu().data.numpy()
-        argmax_indices = np.argmax(predictions, axis=-1)
-        labels = [self.vocab.get_token_from_index(x, namespace=self.label_namespace) for x in argmax_indices]
-        output_dict['labels'] = labels
-        return output_dict
+        argmax_indices = np.argsort(-predictions, axis=-1)[0, :top_k]
+        labels = ['{}:{}'.format(self.vocab.get_token_from_index(x, namespace=self.label_namespace), predictions[0, x]) for x in argmax_indices]
+        output['intent'] = [labels]
+        output["slot"] = []
+        extracted_results = []
+        words = output_dict["words"][0][1:]
+        for tag, word in zip(output_tags[0], words):
+            if tag.startswith('B-'):
+                extracted_results.append([word])
+            elif tag.startswith('I-'):
+                extracted_results[-1].append(word)
+            else:
+                continue
+        for result in extracted_results:
+            output["slot"].append(''.join(result))
+        return output
 
     def forward(self, tokens: Union[torch.Tensor, Dict[str, torch.LongTensor]],
                 input_mask: torch.LongTensor,
@@ -327,7 +338,7 @@ class JointIntentSlotModelGoogleBert(Model):
         transformed_tokens = self._text_field_embedder(tokens)
         first_token_tensor = transformed_tokens[:, 0, :]
         encoded_text = transformed_tokens[:, 1:, :]
-        pooled_output = torch.tanh(self._feedforward(first_token_tensor))
+        pooled_output = self._norm_layer(torch.tanh(self._feedforward(first_token_tensor)))
         tag_logits = self._tag_feedforward(encoded_text)
         mask = input_mask[:, 1:].long()
         best_paths = self.crf.viterbi_tags(tag_logits, mask)
@@ -379,6 +390,6 @@ class JointIntentSlotModelGoogleBert(Model):
                 metrics_to_return.update({
                         x: y for x, y in f1_dict.items() if
                         x == 'f1-measure-overall'})
-        metrics_to_return['i_acc'] = self._intent_accuracy.get_metric(reset)
-        metrics_to_return['i_acc3'] = self._intent_accuracy_3.get_metric(reset)
+        metrics_to_return['acc'] = self._intent_accuracy.get_metric(reset)
+        metrics_to_return['acc3'] = self._intent_accuracy_3.get_metric(reset)
         return metrics_to_return
