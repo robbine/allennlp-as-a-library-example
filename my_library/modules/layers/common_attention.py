@@ -1150,17 +1150,14 @@ def embedding_postprocessor(input_tensor,
 	return output
 
 
-def layer_norm(use_fp16, input_tensor, norm_layer):
+def layer_norm_(use_fp16, input_tensor, norm_layer):
 	"""Run layer normalization on the last dimension of the tensor."""
-	if use_fp16:
-		return norm_layer(input_tensor)
-	else:
-		return norm_layer(input_tensor)
+	return norm_layer(input_tensor)
 
 
 def layer_norm_and_dropout(use_fp16, input_tensor, norm_layer, dropout):
 	"""Runs layer normalization followed by dropout."""
-	output_tensor = layer_norm(use_fp16, input_tensor, norm_layer)
+	output_tensor = norm_layer(input_tensor)
 	output_tensor = dropout(output_tensor)
 	return output_tensor
 
