@@ -71,16 +71,16 @@ def main():
     model_state = torch.load(os.path.join(args.serialization_dir, 'best.th'), map_location=torch.device('cpu'))
     model.load_state_dict(model_state)
     # An example input you would normally provide to your model's forward() method.
-    example = torch.ones(1, 14)
+    example = torch.ones(1, 14, 200)
     example_mask = torch.ones(1, 14)
     # Use torch.jit.trace to generate a torch.jit.ScriptModule via tracing.
     traced_script_transformer = torch.jit.trace(example, example_mask)(model._transformer)
-    # output = traced_script_transformer((torch.ones(1, 14), torch.ones(1, 14)))
-    # print(output)
+    output = traced_script_transformer((torch.ones(1, 14), torch.ones(1, 14)))
+    print(output)
     torch.save(traced_script_transformer, args.output_pt)
-    # dummy_input = torch.ones(1, 14, 200, dtype=torch.float)
-    # dummy_mask = torch.ones(1, 14, dtype=torch.float)
-    # torch.onnx.export(model=model._transformer, args=(dummy_input, dummy_mask), f=args.output_pt, verbose=True)
+    dummy_input = torch.ones(1, 14, 200, dtype=torch.float)
+    dummy_mask = torch.ones(1, 14, dtype=torch.float)
+    torch.onnx.export(model=model._transformer, args=(dummy_input, dummy_mask), f=args.output_pt, verbose=True)
     return 0
 
 if __name__ == '__main__':

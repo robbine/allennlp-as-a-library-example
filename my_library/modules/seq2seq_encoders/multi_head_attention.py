@@ -74,9 +74,9 @@ class MultiHeadAttention(Seq2SeqEncoder):
 		self._value_projection = Linear(memory_size, value_depth)
 		self._key_projection = Linear(memory_size, key_depth)
 		self._query_projection = Linear(input_size, key_depth)
-		torch.nn.init.xavier_uniform(self._key_projection.weight)
-		torch.nn.init.xavier_uniform(self._value_projection.weight)
-		torch.nn.init.xavier_uniform(self._query_projection.weight)
+		torch.nn.init.xavier_uniform_(self._key_projection.weight)
+		torch.nn.init.xavier_uniform_(self._value_projection.weight)
+		torch.nn.init.xavier_uniform_(self._query_projection.weight)
 		self._key_projection.bias.data.fill_(0)
 		self._value_projection.bias.data.fill_(0)
 		self._query_projection.bias.data.fill_(0)
@@ -135,25 +135,6 @@ class MultiHeadAttention(Seq2SeqEncoder):
 			torch.nn.init.xavier_uniform(self._relative_key_embeddings)
 			torch.nn.init.xavier_uniform(self._relative_value_embeddings)
 
-	# def _apply(self, fn):
-	# 	if self._use_fp16:
-	# 		for name, module in self.named_children():
-	# 			print('\t\t' + name + ' ' + str(isinstance(module, nn.Linear)))
-	# 			if not isinstance(module, nn.Linear):
-	# 				module._apply(fn)
-	#
-	# 		for param in self._parameters.values():
-	# 			if param is not None:
-	# 				# Tensors stored in modules are graph leaves, and we don't
-	# 				# want to create copy nodes, so we have to unpack the data.
-	# 				param.data = fn(param.data)
-	# 				if param._grad is not None:
-	# 					param._grad.data = fn(param._grad.data)
-	#
-	# 		for key, buf in self._buffers.items():
-	# 			if buf is not None:
-	# 				self._buffers[key] = fn(buf)
-	# 	return self
 
 	def get_input_dim(self):
 		return self._input_size

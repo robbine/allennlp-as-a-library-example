@@ -6,6 +6,7 @@ from overrides import overrides
 import torch
 import torch.nn as nn
 from torch.nn import Dropout
+import torch.nn.functional as F
 from allennlp.modules.feedforward import FeedForward
 from allennlp.modules.seq2seq_encoders.seq2seq_encoder import Seq2SeqEncoder
 
@@ -144,9 +145,9 @@ class Transformer(Seq2SeqEncoder):
 			self._feedforward_layers.append(feedforward)
 			self._feedforward_output_layers.append(feedforward_output)
 			self._feedforward_intermediate_layers.append(feedforward_intemediate)
-			torch.nn.init.xavier_uniform(feedforward_output.weight)
-			torch.nn.init.xavier_uniform(feedforward.weight)
-			torch.nn.init.xavier_uniform(feedforward_intemediate.weight)
+			torch.nn.init.xavier_uniform_(feedforward_output.weight)
+			torch.nn.init.xavier_uniform_(feedforward.weight)
+			torch.nn.init.xavier_uniform_(feedforward_intemediate.weight)
 			feedforward_output.bias.data.fill_(0)
 			feedforward.bias.data.fill_(0)
 			feedforward_intemediate.bias.data.fill_(0)
@@ -197,13 +198,19 @@ class Transformer(Seq2SeqEncoder):
 								self._layer_norm_layers):
 			layer_input = prev_output
 			attention_output = attention(layer_input, input_mask, encoder_self_attention_bias)
-			attention_output = self._dropout(feedforward_output(attention_output))
+			# TODO(@robbine): a quick work around
+			# attention_output = self._dropout(feedforward_output(attention_output))
+			attention_output = self._dropout(F.linear(attention_output, feedforward_output.weight, feedforward_output.bias))
 			attention_output = layer_norm_output(attention_output + layer_input)
-			attention_intermediate = self._activation(feedforward_intemediate(attention_output))
+			# TODO(@robbine): a quick work around
+			# attention_intermediate = self._activation(feedforward_intemediate(attention_output))
+			attention_intermediate = self._activation(F.linear(attention_output, feedforward_intemediate.weight, feedforward_intemediate.bias))
 			# Project output of attention encoder through a feedforward
 			# network and back to the input size for the next layer.
 			# shape (batch_size, timesteps, input_size)
-			layer_output = self._dropout(feedforward(attention_intermediate))
+			# TODO(@robbine): a quick work around
+			# layer_output = self._dropout(feedforward(attention_intermediate))
+			layer_output = self._dropout(F.linear(attention_intermediate, feedforward.weight, feedforward.bias))
 			layer_output = layer_norm(layer_output + attention_output)
 			prev_output = layer_output
 
