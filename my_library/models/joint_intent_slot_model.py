@@ -328,7 +328,7 @@ class JointIntentSlotModelGoogleBert(Model):
             output["slot"].append(''.join(result))
         return output
 
-    def forward(self, tokens: Union[torch.Tensor, Dict[str, torch.LongTensor]],
+    def forward(self, tokens: Dict[str, torch.LongTensor],
                 input_mask: torch.LongTensor,
                 tags: torch.LongTensor = None,
                 labels: torch.LongTensor = None,
