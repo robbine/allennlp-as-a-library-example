@@ -126,7 +126,7 @@ class JointIntentSlotModel(Model):
         predictions = output_dict['intent_probs'].cpu().data.numpy()
         argmax_indices = np.argsort(-predictions, axis=-1)[0, :top_k]
         labels = ['{}:{}'.format(self.vocab.get_token_from_index(x, namespace=self.label_namespace), predictions[0, x]) for x in argmax_indices]
-        output['intent'] = [labels]
+        output['top 3 intents'] = [labels]
         output["slot"] = []
         extracted_results = []
         words = output_dict["words"][0][1:]
@@ -313,7 +313,7 @@ class JointIntentSlotModelGoogleBert(Model):
         predictions = output_dict['intent_probs'].cpu().data.numpy()
         argmax_indices = np.argsort(-predictions, axis=-1)[0, :top_k]
         labels = ['{}:{}'.format(self.vocab.get_token_from_index(x, namespace=self.label_namespace), predictions[0, x]) for x in argmax_indices]
-        output['intent'] = [labels]
+        output['top 3 intents'] = [labels]
         output["slot"] = []
         extracted_results = []
         words = output_dict["words"][0][1:]

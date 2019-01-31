@@ -4,6 +4,7 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from allennlp.nn import util
 import my_library.util.util as utils
 
@@ -155,6 +156,10 @@ def compute_qkv(use_fp16,
 	"""
 	if memory_antecedent is None:
 		memory_antecedent = query_antecedent
+	# a quick wordaround
+	# q = F.linear(query_antecedent, query_projection.weight, query_projection.bias)
+	# k = F.linear(memory_antecedent, key_projection.weight, key_projection.bias)
+	# v = F.linear(memory_antecedent, value_projection.weight, value_projection.bias)
 	q = query_projection(query_antecedent)
 	k = key_projection(memory_antecedent)
 	v = value_projection(memory_antecedent)

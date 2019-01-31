@@ -84,7 +84,7 @@
             "type": "bert_adam",
             "lr": 0.00001
         },
-        "patience": 3,
+        "patience": 9,
         "validation_metric": "-loss"
     }
 }
