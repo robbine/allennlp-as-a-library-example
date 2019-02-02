@@ -127,18 +127,20 @@ class JointIntentSlotModel(Model):
         argmax_indices = np.argsort(-predictions, axis=-1)[0, :top_k]
         labels = ['{}:{}'.format(self.vocab.get_token_from_index(x, namespace=self.label_namespace), predictions[0, x]) for x in argmax_indices]
         output['top 3 intents'] = [labels]
-        output["slot"] = []
+        output["slots"] = []
         extracted_results = []
         words = output_dict["words"][0][1:]
+        slot_name = ''
         for tag, word in zip(output_tags[0], words):
             if tag.startswith('B-'):
                 extracted_results.append([word])
+                slot_name = tag.split('-')[1][2:-1]
             elif tag.startswith('I-'):
                 extracted_results[-1].append(word)
             else:
                 continue
         for result in extracted_results:
-            output["slot"].append(''.join(result))
+            output['slots'].append({slot_name: ''.join(result)})
         return output
 
     def forward(self, tokens: Dict[str, torch.LongTensor],

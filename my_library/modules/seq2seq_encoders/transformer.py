@@ -199,19 +199,21 @@ class Transformer(Seq2SeqEncoder):
 			layer_input = prev_output
 			attention_output = attention(layer_input, input_mask, encoder_self_attention_bias)
 			# TODO(@robbine): a quick work around
-			# attention_output = self._dropout(feedforward_output(attention_output))
-			attention_output = self._dropout(F.linear(attention_output, feedforward_output.weight, feedforward_output.bias))
+			attention_output = self._dropout(feedforward_output(attention_output))
+			# attention_output = self._dropout(F.linear(attention_output, feedforward_output.weight, feedforward_output.bias))
 			attention_output = layer_norm_output(attention_output + layer_input)
+			# attention_output = F.layer_norm(attention_output + layer_input, layer_norm_output.normalized_shape, layer_norm_output.weight, layer_norm_output.bias, layer_norm_output.eps)
 			# TODO(@robbine): a quick work around
-			# attention_intermediate = self._activation(feedforward_intemediate(attention_output))
-			attention_intermediate = self._activation(F.linear(attention_output, feedforward_intemediate.weight, feedforward_intemediate.bias))
+			attention_intermediate = self._activation(feedforward_intemediate(attention_output))
+			# attention_intermediate = self._activation(F.linear(attention_output, feedforward_intemediate.weight, feedforward_intemediate.bias))
 			# Project output of attention encoder through a feedforward
 			# network and back to the input size for the next layer.
 			# shape (batch_size, timesteps, input_size)
 			# TODO(@robbine): a quick work around
-			# layer_output = self._dropout(feedforward(attention_intermediate))
-			layer_output = self._dropout(F.linear(attention_intermediate, feedforward.weight, feedforward.bias))
+			layer_output = self._dropout(feedforward(attention_intermediate))
+			# layer_output = self._dropout(F.linear(attention_intermediate, feedforward.weight, feedforward.bias))
 			layer_output = layer_norm(layer_output + attention_output)
+			# layer_output = F.layer_norm(layer_output + attention_output, layer_norm.normalized_shape, layer_norm.weight, layer_norm.bias, layer_norm.eps)
 			prev_output = layer_output
 
 		return prev_output

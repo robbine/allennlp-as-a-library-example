@@ -157,12 +157,12 @@ def compute_qkv(use_fp16,
 	if memory_antecedent is None:
 		memory_antecedent = query_antecedent
 	# TODO(@robbine): a quick word around
-	q = F.linear(query_antecedent, query_projection.weight, query_projection.bias)
-	k = F.linear(memory_antecedent, key_projection.weight, key_projection.bias)
-	v = F.linear(memory_antecedent, value_projection.weight, value_projection.bias)
-	# q = query_projection(query_antecedent)
-	# k = key_projection(memory_antecedent)
-	# v = value_projection(memory_antecedent)
+	# q = F.linear(query_antecedent, query_projection.weight, query_projection.bias)
+	# k = F.linear(memory_antecedent, key_projection.weight, key_projection.bias)
+	# v = F.linear(memory_antecedent, value_projection.weight, value_projection.bias)
+	q = query_projection(query_antecedent)
+	k = key_projection(memory_antecedent)
+	v = value_projection(memory_antecedent)
 	return q, k, v
 
 
