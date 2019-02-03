@@ -175,7 +175,7 @@ def split_heads(x, num_heads):
 	  a Tensor with shape [batch, num_heads, length, channels / num_heads]
 	"""
 	batch, length, channels = x.size()
-	per_head = x.view(batch, length, num_heads, int(channels / num_heads))
+	per_head = x.view(batch, length, num_heads, channels // num_heads)
 	return per_head.transpose(1, 2).contiguous()
 
 

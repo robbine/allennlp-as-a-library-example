@@ -35,7 +35,7 @@
         ]
     },
     "model": {
-        "type": "joint_intent_slot",
+        "type": "joint_intent_slot_deps",
         "label_encoding": "BIO",
         "constrain_crf_decoding": true,
         "calculate_span_f1": true,
@@ -85,6 +85,6 @@
             "lr": 0.00001
         },
         "patience": 9,
-        "validation_metric": "-loss"
+        "validation_metric": "+acc"
     }
 }
