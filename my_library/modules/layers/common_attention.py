@@ -1140,7 +1140,7 @@ def embedding_postprocessor(input_tensor,
 		if use_fp16:
 			output = torch.add(output, token_type_embedding_res)
 		else:
-			output += token_type_embedding_res
+			output.add_(token_type_embedding_res)
 
 	if use_position_embeddings:
 		range_tensor = util.get_range_vector(seq_length, util.get_device_of(input_mask_tensor))
@@ -1149,7 +1149,7 @@ def embedding_postprocessor(input_tensor,
 		if use_fp16:
 			output = torch.add(output, position_embedding_res)
 		else:
-			output += position_embedding_res
+			output.add_(position_embedding_res)
 
 	output = layer_norm_and_dropout(use_fp16, output, norm_layer, dropout)
 	return output
