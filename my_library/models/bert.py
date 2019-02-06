@@ -114,7 +114,7 @@ class Bert(Model):
 			output_dict['next_sentence_example_loss'] = next_sentence_example_loss
 			output_dict['next_sentence_log_probs'] = next_sentence_log_probs
 			self._next_sentence_accuracy(next_sentence_log_probs.float(), next_sentence_labels)
-		output_dict["loss"] = masked_lm_loss + next_sentence_loss
+		output_dict["loss"] = masked_lm_loss
 		return output_dict
 
 	def get_metrics(self, reset: bool = False) -> Dict[str, float]:

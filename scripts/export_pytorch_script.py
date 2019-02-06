@@ -57,7 +57,7 @@ def main():
         type_vocab_size=2,
         use_fp16=False,
         value_depth=1024,
-        use_token_type=False,
+        use_token_type=True,
         use_position_embeddings=True)
     model = JointIntentSlotModel(
         text_field_embedder=basic_text_field_embedder,
@@ -72,15 +72,8 @@ def main():
     dummy_mask = torch.ones(1, 14, dtype=torch.float)
     segment_ids = torch.ones(1, 14, dtype=torch.float)
     output = model._transformer(dummy_input, dummy_mask, segment_ids)
-    print(output)
     model_state = torch.load(os.path.join(args.serialization_dir, 'best.th'), map_location=torch.device('cpu'))
     model.load_state_dict(model_state)
-
-    # Use torch.jit.trace to generate a torch.jit.ScriptModule via tracing.
-    # traced_script_transformer = torch.jit.trace(dummy_input, dummy_mask, segment_ids)(model._transformer)
-    # output = traced_script_transformer((dummy_input, dummy_mask, segment_ids))
-    # print(output)
-    # torch.save(traced_script_transformer, args.output_pt)
 
     torch.onnx.export(model=model._transformer, args=(dummy_input, dummy_mask, segment_ids), f=args.output_pt, verbose=True, export_params=True)
     return 0
