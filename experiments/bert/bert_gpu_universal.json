@@ -69,10 +69,7 @@
     "train_data_path": "/home/icepine.hans/data/bert_shenma_data.2M.txt",
     "validation_data_path": "/home/icepine.hans/data/bert_shenma_data.validate.txt",
     "trainer": {
-        "cuda_device": [
-            0,
-            1
-        ],
+        "cuda_device": -1,
         "grad_clipping": 0.1,
         "num_epochs": 280,
         "optimizer": {
