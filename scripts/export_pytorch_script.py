@@ -17,33 +17,42 @@ from my_library.modules.token_embedders.embedding_v2 import _read_pretrained_emb
 from my_library.modules.seq2seq_encoders.transformer import Transformer
 LEVEL = logging.INFO
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(os.path.join(__file__, os.pardir))))
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
-                    level=LEVEL)
+sys.path.insert(
+    0, os.path.dirname(os.path.abspath(os.path.join(__file__, os.pardir))))
+logging.basicConfig(
+    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s', level=LEVEL)
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--serialization-dir', type=str, default='', help='serialization dir path')
-    parser.add_argument('--output-pt', type=str, default='model.pt', help='exported jit trace file')
+    parser.add_argument(
+        '--serialization-dir',
+        type=str,
+        default='',
+        help='serialization dir path')
+    parser.add_argument(
+        '--output-pt',
+        type=str,
+        default='model.pt',
+        help='exported jit trace file')
     args = parser.parse_args()
     return args
+
 
 def main():
     args = parse_args()
     vocabulary = os.path.join(args.serialization_dir, 'vocabulary')
     vocab = Vocabulary.from_files(vocabulary)
-    # bert_embedder = PretrainedBertEmbedder(args.pretrained_model, True)
-    # token_embedders = {'tokens': bert_embedder}
-    # basic_text_field_embedder = BasicTextFieldEmbedder(token_embedders)
-    # weight=_read_pretrained_embeddings_file("/home/icepine.hans/data/ChineseEmbedding.tar.gz", 200, vocab)
-    embedding = EmbeddingV2(False,
-                            num_embeddings=26729,
-                            embedding_dim=200,
-                            padding_index=0,
-                            trainable=False)
+    embedding = EmbeddingV2(
+        False,
+        num_embeddings=26729,
+        embedding_dim=200,
+        padding_index=0,
+        trainable=False)
     token_embedders = {'tokens': embedding}
     basic_text_field_embedder = BasicTextFieldEmbedder(token_embedders)
-    transformer = Transformer(attention_dropout_prob=0.1,
+    transformer = Transformer(
+        attention_dropout_prob=0.1,
         attention_type="dot_product",
         dropout_prob=0.1,
         input_size=200,
@@ -72,11 +81,19 @@ def main():
     dummy_mask = torch.ones(1, 14, dtype=torch.float)
     segment_ids = torch.ones(1, 14, dtype=torch.float)
     output = model._transformer(dummy_input, dummy_mask, segment_ids)
-    model_state = torch.load(os.path.join(args.serialization_dir, 'best.th'), map_location=torch.device('cpu'))
+    model_state = torch.load(
+        os.path.join(args.serialization_dir, 'best.th'),
+        map_location=torch.device('cpu'))
     model.load_state_dict(model_state)
 
-    torch.onnx.export(model=model._transformer, args=(dummy_input, dummy_mask, segment_ids), f=args.output_pt, verbose=True, export_params=True)
+    torch.onnx.export(
+        model=model._transformer,
+        args=(dummy_input, dummy_mask, segment_ids),
+        f=args.output_pt,
+        verbose=True,
+        export_params=True)
     return 0
+
 
 if __name__ == '__main__':
     sys.exit(main())
