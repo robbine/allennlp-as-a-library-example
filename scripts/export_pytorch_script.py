@@ -7,7 +7,7 @@ from allennlp.common.from_params import FromParams
 from allennlp.models.model import Model
 import logging
 import os
-from my_library.models.joint_intent_slot_model import JointIntentSlotModel, JointIntentSlotModelGoogleBert
+from my_library.models.joint_intent_slot_model import JointIntentSlotModel, JointIntentSlotModelGoogleBert, JointIntentSlotDepsModel
 from my_library.modules.token_embedders.embedding_v2 import EmbeddingV2
 from allennlp.modules.text_field_embedders.basic_text_field_embedder import BasicTextFieldEmbedder
 from allennlp.modules.token_embedders.bert_token_embedder import PretrainedBertEmbedder
@@ -62,13 +62,13 @@ def main():
         max_position_embeddings=256,
         memory_size=200,
         num_heads=16,
-        num_hidden_layers=16,
+        num_hidden_layers=6,
         type_vocab_size=2,
         use_fp16=False,
         value_depth=1024,
         use_token_type=True,
         use_position_embeddings=True)
-    model = JointIntentSlotModel(
+    model = JointIntentSlotDepsModel(
         text_field_embedder=basic_text_field_embedder,
         transformer=transformer,
         vocab=vocab,
@@ -81,9 +81,10 @@ def main():
     dummy_mask = torch.ones(1, 14, dtype=torch.float)
     segment_ids = torch.ones(1, 14, dtype=torch.float)
     output = model._transformer(dummy_input, dummy_mask, segment_ids)
-    model_state = torch.load(
-        os.path.join(args.serialization_dir, 'best.th'),
-        map_location=torch.device('cpu'))
+    # model_state = torch.load(
+    #     os.path.join(args.serialization_dir, 'best.th'),
+    #     map_location=torch.device('cpu'))
+    model_state = torch.load('/tmp/model.th')
     model.load_state_dict(model_state)
 
     torch.onnx.export(

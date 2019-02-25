@@ -1,0 +1,13 @@
+O
+I-[$fund_name]
+I-[$stock_name]
+B-[$fund_name]
+B-[$stock_name]
+I-[$fund_company_name]
+I-[$plate_name]
+I-[$fund_manager_name]
+B-[$plate_name]
+B-[$fund_company_name]
+B-[$fund_manager_name]
+I-[$index_name]
+B-[$index_name]
