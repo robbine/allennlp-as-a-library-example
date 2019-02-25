@@ -25,7 +25,7 @@ import math
 
 from allennlp.nn import Activation
 from torch.nn import Dropout
-
+import common_attention as common_attention
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 
