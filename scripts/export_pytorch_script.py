@@ -1,3 +1,6 @@
+from __future__ import print_function
+from __future__ import unicode_literals
+from __future__ import division
 import torch
 import argparse
 import sys
@@ -17,8 +20,6 @@ from my_library.modules.token_embedders.embedding_v2 import _read_pretrained_emb
 from my_library.modules.seq2seq_encoders.transformer import Transformer
 LEVEL = logging.INFO
 
-sys.path.insert(
-    0, os.path.dirname(os.path.abspath(os.path.join(__file__, os.pardir))))
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s', level=LEVEL)
 
@@ -81,10 +82,9 @@ def main():
     dummy_mask = torch.ones(1, 14, dtype=torch.float)
     segment_ids = torch.ones(1, 14, dtype=torch.float)
     output = model._transformer(dummy_input, dummy_mask, segment_ids)
-    # model_state = torch.load(
-    #     os.path.join(args.serialization_dir, 'best.th'),
-    #     map_location=torch.device('cpu'))
-    model_state = torch.load('/tmp/model.th')
+    model_state = torch.load(
+        os.path.join(args.serialization_dir, 'best.th'),
+        map_location=torch.device('cpu'))
     model.load_state_dict(model_state)
 
     torch.onnx.export(
