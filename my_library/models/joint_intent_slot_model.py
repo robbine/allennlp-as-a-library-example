@@ -20,10 +20,13 @@ from allennlp.modules.seq2vec_encoders.cnn_encoder import CnnEncoder
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
+class JointIntentSlotDepsInnerModel(Model):
+    def __init__()
 
 @Model.register("joint_intent_slot_deps")
 class JointIntentSlotDepsModel(Model):
-    def __init__(self, vocab: Vocabulary, use_fp16,
+    def __init__(self, vocab: Vocabulary,
+                 use_fp16,
                  text_field_embedder: TextFieldEmbedder,
                  transformer: Seq2SeqEncoder,
                  label_namespace: str = "labels",

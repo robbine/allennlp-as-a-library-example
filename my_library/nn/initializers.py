@@ -14,6 +14,7 @@ from allennlp.common.checks import ConfigurationError
 from allennlp.nn.initializers import Initializer
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
+
 @Initializer.register('pretrained_v2')
 class PretrainedModelInitializerV2(Initializer):
     """
@@ -40,7 +41,7 @@ class PretrainedModelInitializerV2(Initializer):
 
        ["linear_1.weight|linear_2.weight",
            {
-               "type": "pretrained",
+               "type": "pretrained_v2",
                "weights_file_path": "best.th",
                "parameter_name_overrides": {
                    "linear_2.weight": "linear_3.weight"
@@ -57,14 +58,17 @@ class PretrainedModelInitializerV2(Initializer):
         to index into the pretrained model parameters. If a parameter name is not
         specified, the initializer will use the parameter's default name as the key.
     """
+
     def __init__(self,
                  weights_file_path: str,
                  parameter_name_overrides: Dict[str, str] = None) -> None:
-        self.weights: Dict[str, torch.Tensor] = torch.load(weights_file_path, map_location=torch.device('cpu'))
+        self.weights: Dict[str, torch.Tensor] = torch.load(
+            weights_file_path, map_location=torch.device('cpu'))
         self.parameter_name_overrides = parameter_name_overrides or {}
 
     @overrides
-    def __call__(self, tensor: torch.Tensor, parameter_name: str, **kwargs) -> None:  # type: ignore
+    def __call__(self, tensor: torch.Tensor, parameter_name: str,
+                 **kwargs) -> None:  # type: ignore
         # Select the new parameter name if it's being overridden
         if parameter_name in self.parameter_name_overrides:
             parameter_name = self.parameter_name_overrides[parameter_name]
@@ -73,10 +77,10 @@ class PretrainedModelInitializerV2(Initializer):
         # same, then we need to raise an error
         source_weights = self.weights[parameter_name]
         if tensor.data.size() != source_weights.size():
-            raise ConfigurationError("Incompatible sizes found for parameter %s. "
-                                     "Found %s and %s" % (parameter_name,
-                                                          tensor.data.size(),
-                                                          source_weights.size()))
+            raise ConfigurationError(
+                "Incompatible sizes found for parameter %s. "
+                "Found %s and %s" % (parameter_name, tensor.data.size(),
+                                     source_weights.size()))
 
         # Copy the parameters from the source to the destination
         tensor.data[:] = source_weights[:]

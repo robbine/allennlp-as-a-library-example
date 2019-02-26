@@ -11,6 +11,8 @@ import tarfile
 import torch
 import torch.nn.init
 import numpy as np
+import pprint
+import json
 
 from allennlp.common import Registrable
 from allennlp.common.params import Params
@@ -82,14 +84,31 @@ def save_embedding_file(weights, tokens, serialization_dir,
         tar_file.add(embedding_fn, 'exported_embedding.txt')
 
 
+def print_tensors(serialization_dir, weights_file_name):
+    weights_file_path = os.path.join(serialization_dir, weights_file_name)
+    weights: Dict[str, torch.Tensor] = torch.load(weights_file_path)
+    arr = []
+    map = {}
+    prefix = '_inner_model'
+    for name, weight in weights.items():
+        if name.startswith('_transformer'):
+            arr.append(name)
+            key = '{}.{}'.format(prefix, name)
+            map[key] = name
+    pp = pprint.PrettyPrinter(indent=4)
+    print(json.dumps(map))
+    print('|'.join(arr))
+
+
 def main():
     args = parse_args()
-    weights = load_weights(args.serialization_dir, args.weights_file_name,
-                           args.embedder_name)
-    tokens = load_vocab(args.serialization_dir, args.vocab_file_folder)
-    assert len(tokens) == weights.shape[0]
-    save_embedding_file(weights, tokens, args.serialization_dir,
-                        args.output_embedding_file)
+    # weights = load_weights(args.serialization_dir, args.weights_file_name,
+    #                        args.embedder_name)
+    # tokens = load_vocab(args.serialization_dir, args.vocab_file_folder)
+    # assert len(tokens) == weights.shape[0]
+    # save_embedding_file(weights, tokens, args.serialization_dir,
+    #                     args.output_embedding_file)
+    print_tensors(args.serialization_dir, args.weights_file_name)
 
 
 if __name__ == "__main__":
