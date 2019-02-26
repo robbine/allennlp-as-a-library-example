@@ -82,6 +82,10 @@ def save_embedding_file(weights, tokens, serialization_dir,
         tar_file.add(embedding_fn, 'exported_embedding.txt')
 
 
+def print_tensors():
+    pass
+
+
 def main():
     args = parse_args()
     weights = load_weights(args.serialization_dir, args.weights_file_name,
