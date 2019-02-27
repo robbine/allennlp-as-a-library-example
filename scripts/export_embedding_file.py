@@ -32,6 +32,12 @@ def parse_args():
         A argparse.Namespace object which contains all parsed argument values.
     """
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        '--print-tensors', help='whether print tensors', default=False)
+    parser.add_argument(
+        '--export-unknown-token',
+        help='whether export unkown token',
+        default=False)
     parser.add_argument('--serialization-dir', help='serialization dir path')
     parser.add_argument(
         '--weights-file-name', help='weigth file name', default='best.th')
@@ -102,13 +108,14 @@ def print_tensors(serialization_dir, weights_file_name):
 
 def main():
     args = parse_args()
-    # weights = load_weights(args.serialization_dir, args.weights_file_name,
-    #                        args.embedder_name)
-    # tokens = load_vocab(args.serialization_dir, args.vocab_file_folder)
-    # assert len(tokens) == weights.shape[0]
-    # save_embedding_file(weights, tokens, args.serialization_dir,
-    #                     args.output_embedding_file)
-    print_tensors(args.serialization_dir, args.weights_file_name)
+    if args.print_tensors:
+        print_tensors(args.serialization_dir, args.weights_file_name)
+    weights = load_weights(args.serialization_dir, args.weights_file_name,
+                           args.embedder_name)
+    tokens = load_vocab(args.serialization_dir, args.vocab_file_folder)
+    assert len(tokens) == weights.shape[0]
+    save_embedding_file(weights, tokens, args.serialization_dir,
+                        args.output_embedding_file)
 
 
 if __name__ == "__main__":

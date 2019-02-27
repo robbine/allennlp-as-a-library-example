@@ -58,7 +58,7 @@
             "type": "basic_v2",
             "tokens": {
                 "type": "embedding_v2",
-                "pretrained_file": "/home/icepine.hans/data/ChineseEmbedding.tar.gz",
+                "pretrained_file": "/home/icepine.hans/data/bert_universal_2M_6L/exported_embedding.tar.gz",
                 "embedding_dim": 200,
                 "padding_index": 0,
                 "trainable": true
