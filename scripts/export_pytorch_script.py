@@ -46,7 +46,7 @@ def main():
     vocab = Vocabulary.from_files(vocabulary)
     embedding = EmbeddingV2(
         False,
-        num_embeddings=26729,
+        num_embeddings=22123,
         embedding_dim=200,
         padding_index=0,
         trainable=False)
@@ -67,7 +67,7 @@ def main():
         type_vocab_size=2,
         use_fp16=False,
         value_depth=1024,
-        use_token_type=True,
+        use_token_type=False,
         use_position_embeddings=True)
     model = JointIntentSlotDepsModel(
         text_field_embedder=basic_text_field_embedder,
@@ -81,15 +81,15 @@ def main():
     dummy_input = torch.ones(1, 14, 200, dtype=torch.float)
     dummy_mask = torch.ones(1, 14, dtype=torch.float)
     segment_ids = torch.ones(1, 14, dtype=torch.float)
-    output = model._transformer(dummy_input, dummy_mask, segment_ids)
+    output = model._inner_model(dummy_input, dummy_mask)
     model_state = torch.load(
         os.path.join(args.serialization_dir, 'best.th'),
         map_location=torch.device('cpu'))
     model.load_state_dict(model_state)
 
     torch.onnx.export(
-        model=model._transformer,
-        args=(dummy_input, dummy_mask, segment_ids),
+        model=model._inner_model,
+        args=(dummy_input, dummy_mask),
         f=args.output_pt,
         verbose=True,
         export_params=True)

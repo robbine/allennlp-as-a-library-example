@@ -92,10 +92,10 @@ class JointIntentSlotDepsModel(Model):
         num_tags = self.vocab.get_vocab_size(tag_namespace)
         self._inner_model = JointIntentSlotDepsInnerModel(
             transformer, num_intents, num_tags)
-        if dropout:
-            self.dropout = torch.nn.Dropout(dropout)
-        else:
-            self.dropout = None
+        # if dropout:
+        #     self.dropout = torch.nn.Dropout(dropout)
+        # else:
+        #     self.dropout = None
 
         # if  constrain_crf_decoding and calculate_span_f1 are not
         # provided, (i.e., they're None), set them to True

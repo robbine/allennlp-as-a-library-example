@@ -93,7 +93,6 @@ class IntentSlotDatasetReader(DatasetReader):
                 line = line.strip('\n')
                 parts = line.split('\t')
                 if len(parts) != 3:
-                    print(parts)
                     logger.info('wrong text format '.format(line))
                     continue
                 all_records.append(parts)
