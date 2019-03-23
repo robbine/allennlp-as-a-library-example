@@ -2,21 +2,20 @@
     "dataset_reader": {
         "type": "intent_slot_reader",
         "lazy": false,
-        "max_seq_length": 64,
+        "max_seq_length": 250,
         "token_indexers": {
             "tokens": {
                 "type": "single_id",
-                "lowercase_tokens": true
+                "lowercase_tokens": true,
             }
         },
         "tokenizer": {
             "type": "word",
             "start_tokens": [
                 "[CLS]",
-                "START",
             ],
             "end_tokens": [
-                "END"
+                "[SEP]"
             ],
             "word_splitter": {
                 "type": "bert-basic",
@@ -26,7 +25,7 @@
     },
     "iterator": {
         "type": "bucket",
-        "batch_size": 256,
+        "batch_size": 128,
         "sorting_keys": [
             [
                 "tokens",
@@ -41,6 +40,7 @@
         "calculate_span_f1": true,
         "include_start_end_transitions": true,
         "wait_user_input": false,
+        "dropout": 0.3,
         "initializer":
          [
              [
@@ -54,6 +54,15 @@
                  }
             ]
         ],
+        "regularizer": [
+            [
+                ".*",
+                {
+                    "type": "l2",
+                    "alpha": 1e-06
+                }
+            ]
+        ],
         "text_field_embedder": {
             "type": "basic_v2",
             "tokens": {
@@ -61,15 +70,18 @@
                 "pretrained_file": "/home/icepine.hans/data/bert_universal_2M_6L/exported_embedding.tar.gz",
                 "embedding_dim": 200,
                 "padding_index": 0,
-                "trainable": true
+                "trainable": true,
+                "max_norm": 0.1,
+                "scale_grad_by_freq": true,
+                "dropout": 0.3,
             },
             "use_fp16": false
         },
         "transformer": {
             "type": "transformer",
-            "attention_dropout_prob": 0.1,
+            "attention_dropout_prob": 0.3,
             "attention_type": "dot_product",
-            "dropout_prob": 0.1,
+            "dropout_prob": 0.3,
             "input_size": 200,
             "intermediate_act_fn": "gelu",
             "intermediate_size": 3072,
@@ -87,16 +99,18 @@
         "use_fp16": false
     },
     "train_data_path": "/home/icepine.hans/data/bert_intent_slot_data.sample.txt",
-    "validation_data_path": "/home/icepine.hans/data/bert_intent_slot_data.validate.txt",
+    "validation_data_path": "/home/icepine.hans/data/bert_intent_slot_data.manze.validate.txt",
     "trainer": {
+        "num_serialized_models_to_keep": 5,
         "cuda_device": 1,
         "grad_clipping": 1.0,
+        "grad_norm": 1.0,
         "num_epochs": 30,
         "optimizer": {
-            "type": "bert_adam",
+            "type": "adam",
             "lr": 0.00001
         },
         "patience": 3,
-        "validation_metric": "+acc"
+        "validation_metric": "+ac"
     }
 }

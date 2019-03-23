@@ -16,17 +16,17 @@ from my_library.modules.seq2seq_encoders.multi_head_attention import MultiHeadAt
 
 
 def gelu(x):
-	"""Implementation of the gelu activation function.
+    """Implementation of the gelu activation function.
 		For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
 		0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
 	"""
-	return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
+    return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
 
 
 @Seq2SeqEncoder.register("transformer")
 class Transformer(Seq2SeqEncoder):
-	# pylint: disable=line-too-long
-	"""
+    # pylint: disable=line-too-long
+    """
 	Implements a stacked self-attention encoder similar to the Transformer
 	architecture in `Attention is all you Need
 	<https://www.semanticscholar.org/paper/Attention-Is-All-You-Need-Vaswani-Shazeer/0737da0767d77606169cbf4187b83e1ab62f6077>`_ .
@@ -70,150 +70,146 @@ class Transformer(Seq2SeqEncoder):
 		The dropout probability for the attention distributions in each attention layer.
 	"""
 
-	def __init__(self,
-				 use_fp16: bool,
-				 num_hidden_layers: int,
-				 intermediate_size: int,
-				 intermediate_act_fn: str,
-				 num_heads: int,
-				 input_size: int,
-				 memory_size: int,
-				 key_depth: int,
-				 value_depth: int,
-				 max_position_embeddings: int = 512,
-				 type_vocab_size: int = 3,
-				 attention_dropout_prob: float = 0.1,
-				 dropout_prob: float = 0.1,
-				 use_token_type=True,
-				 use_position_embeddings=True,
-				 attention_type: str = 'dot_product',
-				 max_relative_position=5,
-				 heads_share_relative_embedding=True,
-				 add_relative_to_values=False,
-				 block_length=64,
-				 block_width=64) -> None:
-		super(Transformer, self).__init__()
-		hidden_size = input_size
-		self._use_fp16 = use_fp16
-		self._use_token_type = use_token_type
-		self._use_position_embeddings = use_position_embeddings
-		self._norm_layer = nn.LayerNorm(input_size)
-		self._token_type_embedding = EmbeddingV2(self._use_fp16, type_vocab_size, input_size)
-		self._position_embedding = EmbeddingV2(self._use_fp16, max_position_embeddings, input_size)
-		self._dropout = Dropout(dropout_prob)
-		if intermediate_act_fn == 'gelu':
-			self._activation = gelu
-		else:
-			self._activation = Activation.by_name(intermediate_act_fn)()
-		self._attention_layers = nn.ModuleList()
-		self._layer_norm_output_layers = nn.ModuleList()
-		self._layer_norm_layers = nn.ModuleList()
-		self._feedforward_layers = nn.ModuleList()
-		self._feedforward_output_layers = nn.ModuleList()
-		self._feedforward_intermediate_layers = nn.ModuleList()
+    def __init__(self,
+                 use_fp16: bool,
+                 num_hidden_layers: int,
+                 intermediate_size: int,
+                 intermediate_act_fn: str,
+                 num_heads: int,
+                 input_size: int,
+                 memory_size: int,
+                 key_depth: int,
+                 value_depth: int,
+                 max_position_embeddings: int = 512,
+                 type_vocab_size: int = 3,
+                 attention_dropout_prob: float = 0.1,
+                 dropout_prob: float = 0.1,
+                 use_token_type=True,
+                 use_position_embeddings=True,
+                 attention_type: str = 'dot_product',
+                 max_relative_position=5,
+                 heads_share_relative_embedding=True,
+                 add_relative_to_values=False,
+                 block_length=64,
+                 block_width=64) -> None:
+        super(Transformer, self).__init__()
+        hidden_size = input_size
+        self._use_fp16 = use_fp16
+        self._use_token_type = use_token_type
+        self._use_position_embeddings = use_position_embeddings
+        self._norm_layer = nn.LayerNorm(input_size)
+        self._token_type_embedding = EmbeddingV2(self._use_fp16,
+                                                 type_vocab_size, input_size)
+        self._position_embedding = EmbeddingV2(
+            self._use_fp16, max_position_embeddings, input_size)
+        self._dropout = Dropout(dropout_prob)
+        if intermediate_act_fn == 'gelu':
+            self._activation = gelu
+        else:
+            self._activation = Activation.by_name(intermediate_act_fn)()
+        self._attention_layers = nn.ModuleList()
+        self._layer_norm_output_layers = nn.ModuleList()
+        self._layer_norm_layers = nn.ModuleList()
+        self._feedforward_layers = nn.ModuleList()
+        self._feedforward_output_layers = nn.ModuleList()
+        self._feedforward_intermediate_layers = nn.ModuleList()
 
-		for i in range(num_hidden_layers):
-			self_attention = MultiHeadAttention(use_fp16,
-												num_heads,
-												input_size,
-												memory_size,
-												key_depth,
-												value_depth,
-												max_position_embeddings,
-												type_vocab_size,
-												attention_dropout_prob,
-												attention_type,
-												max_relative_position,
-												heads_share_relative_embedding,
-												add_relative_to_values,
-												block_length,
-												block_width)
-			layer_norm_output = nn.LayerNorm(hidden_size)
-			layer_norm = nn.LayerNorm(hidden_size)
-			feedforward_output = nn.Linear(self_attention.get_output_dim(), hidden_size)
-			feedforward_intemediate = nn.Linear(hidden_size, intermediate_size)
-			feedforward = nn.Linear(intermediate_size, hidden_size)
-			self.add_module(f"self_attention_{i}", self_attention)
-			self.add_module(f"layer_norm_output_{i}", layer_norm_output)
-			self.add_module(f"layer_norm_{i}", layer_norm)
-			self.add_module(f"feedforward_{i}", feedforward)
-			self.add_module(f"feedforward_output_{i}", feedforward_output)
-			self.add_module(f"feedforward_intermediate_{i}", feedforward_intemediate)
-			self._attention_layers.append(self_attention)
-			self._layer_norm_output_layers.append(layer_norm_output)
-			self._layer_norm_layers.append(layer_norm)
-			self._feedforward_layers.append(feedforward)
-			self._feedforward_output_layers.append(feedforward_output)
-			self._feedforward_intermediate_layers.append(feedforward_intemediate)
-			torch.nn.init.xavier_uniform_(feedforward_output.weight)
-			torch.nn.init.xavier_uniform_(feedforward.weight)
-			torch.nn.init.xavier_uniform_(feedforward_intemediate.weight)
-			feedforward_output.bias.data.fill_(0)
-			feedforward.bias.data.fill_(0)
-			feedforward_intemediate.bias.data.fill_(0)
+        for i in range(num_hidden_layers):
+            self_attention = MultiHeadAttention(
+                use_fp16, num_heads, input_size, memory_size, key_depth,
+                value_depth, max_position_embeddings, type_vocab_size,
+                attention_dropout_prob, attention_type, max_relative_position,
+                heads_share_relative_embedding, add_relative_to_values,
+                block_length, block_width)
+            layer_norm_output = nn.LayerNorm(hidden_size)
+            layer_norm = nn.LayerNorm(hidden_size)
+            feedforward_output = nn.Linear(self_attention.get_output_dim(),
+                                           hidden_size)
+            feedforward_intemediate = nn.Linear(hidden_size, intermediate_size)
+            feedforward = nn.Linear(intermediate_size, hidden_size)
+            self.add_module(f"self_attention_{i}", self_attention)
+            self.add_module(f"layer_norm_output_{i}", layer_norm_output)
+            self.add_module(f"layer_norm_{i}", layer_norm)
+            self.add_module(f"feedforward_{i}", feedforward)
+            self.add_module(f"feedforward_output_{i}", feedforward_output)
+            self.add_module(f"feedforward_intermediate_{i}",
+                            feedforward_intemediate)
+            self._attention_layers.append(self_attention)
+            self._layer_norm_output_layers.append(layer_norm_output)
+            self._layer_norm_layers.append(layer_norm)
+            self._feedforward_layers.append(feedforward)
+            self._feedforward_output_layers.append(feedforward_output)
+            self._feedforward_intermediate_layers.append(
+                feedforward_intemediate)
+            torch.nn.init.xavier_uniform_(feedforward_output.weight)
+            torch.nn.init.xavier_uniform_(feedforward.weight)
+            torch.nn.init.xavier_uniform_(feedforward_intemediate.weight)
+            feedforward_output.bias.data.fill_(0)
+            feedforward.bias.data.fill_(0)
+            feedforward_intemediate.bias.data.fill_(0)
 
-		self._input_dim = input_size
-		self._output_dim = hidden_size
+        self._input_dim = input_size
+        self._output_dim = hidden_size
 
-	@overrides
-	def get_input_dim(self) -> int:
-		return self._input_dim
+    @overrides
+    def get_input_dim(self) -> int:
+        return self._input_dim
 
-	@overrides
-	def get_output_dim(self) -> int:
-		return self._output_dim
+    @overrides
+    def get_output_dim(self) -> int:
+        return self._output_dim
 
-	@overrides
-	def is_bidirectional(self):
-		return False
+    @overrides
+    def is_bidirectional(self):
+        return False
 
-	@overrides
-	def forward(self, embedded_tokens: torch.FloatTensor,
-				input_mask: torch.LongTensor,
-				segment_ids: torch.LongTensor = None):  # pylint: disable=arguments-differ
-		embedded_tokens = common_attention.embedding_postprocessor(embedded_tokens,
-																   input_mask.long(),
-																   self._use_fp16,
-																   token_type_ids=segment_ids,
-																   use_token_type=self._use_token_type,
-																   token_type_embedding=self._token_type_embedding,
-																   use_position_embeddings=self._use_position_embeddings,
-																   position_embedding=self._position_embedding,
-																   norm_layer=self._norm_layer,
-																   dropout=self._dropout)
-		encoder_self_attention_bias = common_attention.create_attention_mask_from_input_mask(embedded_tokens,
-																							 input_mask,
-																							 self._use_fp16)
-		prev_output = embedded_tokens
-		for (attention,
-			 feedforward_output,
-			 feedforward,
-			 feedforward_intemediate,
-			 layer_norm_output,
-			 layer_norm) in zip(self._attention_layers,
-								self._feedforward_output_layers,
-								self._feedforward_layers,
-								self._feedforward_intermediate_layers,
-								self._layer_norm_output_layers,
-								self._layer_norm_layers):
-			layer_input = prev_output
-			attention_output = attention(layer_input, input_mask, encoder_self_attention_bias)
-			# TODO(@robbine): a quick work around
-			attention_output = self._dropout(feedforward_output(attention_output))
-			# attention_output = self._dropout(F.linear(attention_output, feedforward_output.weight, feedforward_output.bias))
-			attention_output = layer_norm_output(attention_output + layer_input)
-			# attention_output = F.layer_norm(attention_output + layer_input, layer_norm_output.normalized_shape, layer_norm_output.weight, layer_norm_output.bias, layer_norm_output.eps)
-			# TODO(@robbine): a quick work around
-			attention_intermediate = self._activation(feedforward_intemediate(attention_output))
-			# attention_intermediate = self._activation(F.linear(attention_output, feedforward_intemediate.weight, feedforward_intemediate.bias))
-			# Project output of attention encoder through a feedforward
-			# network and back to the input size for the next layer.
-			# shape (batch_size, timesteps, input_size)
-			# TODO(@robbine): a quick work around
-			layer_output = self._dropout(feedforward(attention_intermediate))
-			# layer_output = self._dropout(F.linear(attention_intermediate, feedforward.weight, feedforward.bias))
-			layer_output = layer_norm(layer_output + attention_output)
-			# layer_output = F.layer_norm(layer_output + attention_output, layer_norm.normalized_shape, layer_norm.weight, layer_norm.bias, layer_norm.eps)
-			prev_output = layer_output
+    @overrides
+    def forward(self,
+                embedded_tokens: torch.FloatTensor,
+                input_mask: torch.LongTensor,
+                segment_ids: torch.LongTensor = None):  # pylint: disable=arguments-differ
+        embedded_tokens = common_attention.embedding_postprocessor(
+            embedded_tokens,
+            input_mask.long(),
+            self._use_fp16,
+            token_type_ids=segment_ids,
+            use_token_type=self._use_token_type,
+            token_type_embedding=self._token_type_embedding,
+            use_position_embeddings=self._use_position_embeddings,
+            position_embedding=self._position_embedding,
+            norm_layer=self._norm_layer,
+            dropout=self._dropout)
+        encoder_self_attention_bias = common_attention.create_attention_mask_from_input_mask(
+            embedded_tokens, input_mask, self._use_fp16)
+        prev_output = embedded_tokens
+        for (attention, feedforward_output, feedforward,
+             feedforward_intemediate, layer_norm_output, layer_norm) in zip(
+                 self._attention_layers, self._feedforward_output_layers,
+                 self._feedforward_layers,
+                 self._feedforward_intermediate_layers,
+                 self._layer_norm_output_layers, self._layer_norm_layers):
+            layer_input = prev_output
+            attention_output = attention(layer_input, input_mask,
+                                         encoder_self_attention_bias)
+            # TODO(@robbine): a quick work around
+            attention_output = self._dropout(
+                feedforward_output(attention_output))
+            # attention_output = self._dropout(F.linear(attention_output, feedforward_output.weight, feedforward_output.bias))
+            attention_output = layer_norm_output(attention_output +
+                                                 layer_input)
+            # attention_output = F.layer_norm(attention_output + layer_input, layer_norm_output.normalized_shape, layer_norm_output.weight, layer_norm_output.bias, layer_norm_output.eps)
+            # TODO(@robbine): a quick work around
+            attention_intermediate = self._activation(
+                feedforward_intemediate(attention_output))
+            # attention_intermediate = self._activation(F.linear(attention_output, feedforward_intemediate.weight, feedforward_intemediate.bias))
+            # Project output of attention encoder through a feedforward
+            # network and back to the input size for the next layer.
+            # shape (batch_size, timesteps, input_size)
+            # TODO(@robbine): a quick work around
+            layer_output = self._dropout(feedforward(attention_intermediate))
+            # layer_output = self._dropout(F.linear(attention_intermediate, feedforward.weight, feedforward.bias))
+            layer_output = layer_norm(layer_output + attention_output)
+            # layer_output = F.layer_norm(layer_output + attention_output, layer_norm.normalized_shape, layer_norm.weight, layer_norm.bias, layer_norm.eps)
+            prev_output = layer_output
 
-		return prev_output
+        return prev_output

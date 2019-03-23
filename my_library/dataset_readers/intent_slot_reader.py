@@ -96,7 +96,7 @@ class IntentSlotDatasetReader(DatasetReader):
                     logger.info('wrong text format '.format(line))
                     continue
                 all_records.append(parts)
-        self.rng.shuffle(all_records)
+        random.shuffle(all_records)
         instances = []
         if self.lazy:
             for record in all_records:
@@ -118,17 +118,19 @@ class IntentSlotDatasetReader(DatasetReader):
 
     def text_to_instance(self, raw_query, tags, label) -> Instance:
         tokens = self._tokenizer.tokenize(raw_query)
+        if len(tokens) > self.max_seq_length:
+            tokens = tokens[:self.max_seq_length - 1] + [tokens[-1]]
         sequence = TextField(tokens, self._token_indexers)
         if tags is not None:
-            tag_ids = ['O', 'O']
+            tag_ids = ['O']
             cur_index = 0
             index = 0
             tags.append(
                 SlotInstance(
                     start_index=1000, end_index=1001, slot_id='fake_slot_id'))
             slot = tags[index]
-            # skip leading [CLS] BOS token
-            i = 2
+            # skip leading [CLS] token
+            i = 1
             while i < len(tokens):
                 token = tokens[i]
                 if cur_index + len(token.text) <= slot.start_index:

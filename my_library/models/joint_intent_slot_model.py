@@ -22,14 +22,15 @@ logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 
 class JointIntentSlotDepsInnerModel(torch.nn.Module):
-    def __init__(self, transformer: Seq2SeqEncoder, num_intents, num_tags):
+    def __init__(self, transformer: Seq2SeqEncoder, num_intents, num_tags,
+                 dropout):
         super().__init__()
         self._transformer = transformer
         self.num_intents = num_intents
         self.num_tags = num_tags
         hidden_size = self._transformer.get_output_dim()
         self.cnn_num_filters = 3
-        self.cnn_ngram_filter_sizes = (2, 3)
+        self.cnn_ngram_filter_sizes = (2, )
         cnn_maxpool_output_dim = self.cnn_num_filters * len(
             self.cnn_ngram_filter_sizes)
         self._cnn_encoder = CnnEncoder(self.num_tags, self.cnn_num_filters,
@@ -41,6 +42,10 @@ class JointIntentSlotDepsInnerModel(torch.nn.Module):
         self._tag_feedforward = nn.Linear(transformer.get_output_dim(),
                                           self.num_tags)
         self._norm_layer = nn.LayerNorm(transformer.get_output_dim())
+        if dropout:
+            self.dropout = torch.nn.Dropout(dropout)
+        else:
+            self.dropout = None
         torch.nn.init.xavier_uniform_(self._feedforward.weight)
         torch.nn.init.xavier_uniform_(self._intent_feedforward.weight)
         torch.nn.init.xavier_uniform_(self._tag_feedforward.weight)
@@ -52,8 +57,9 @@ class JointIntentSlotDepsInnerModel(torch.nn.Module):
         transformed_tokens = self._transformer(embedded_tokens, input_mask)
         first_token_tensor = transformed_tokens[:, 0, :]
         encoded_text = transformed_tokens[:, 1:, :]
-        pooled_output = self._norm_layer(
-            torch.tanh(self._feedforward(first_token_tensor)))
+        pooled_output = torch.tanh(self._feedforward(first_token_tensor))
+        if self.dropout:
+            pooled_output = self.dropout(pooled_output)
         tag_logits = self._tag_feedforward(encoded_text)
         intent_logits = self._intent_feedforward(
             torch.cat(
@@ -91,11 +97,7 @@ class JointIntentSlotDepsModel(Model):
         num_intents = self.vocab.get_vocab_size(label_namespace)
         num_tags = self.vocab.get_vocab_size(tag_namespace)
         self._inner_model = JointIntentSlotDepsInnerModel(
-            transformer, num_intents, num_tags)
-        # if dropout:
-        #     self.dropout = torch.nn.Dropout(dropout)
-        # else:
-        #     self.dropout = None
+            transformer, num_intents, num_tags, dropout)
 
         # if  constrain_crf_decoding and calculate_span_f1 are not
         # provided, (i.e., they're None), set them to True
@@ -249,8 +251,8 @@ class JointIntentSlotDepsModel(Model):
                     x: y
                     for x, y in f1_dict.items() if x == 'f1-measure-overall'
                 })
-        metrics_to_return['acc'] = self._intent_accuracy.get_metric(reset)
-        metrics_to_return['acc3'] = self._intent_accuracy_3.get_metric(reset)
+        metrics_to_return['ac'] = self._intent_accuracy.get_metric(reset)
+        metrics_to_return['ac3'] = self._intent_accuracy_3.get_metric(reset)
         return metrics_to_return
 
 
@@ -580,18 +582,20 @@ class JointIntentSlotModelGoogleBert(Model):
             for x in argmax_indices
         ]
         output['top 3 intents'] = [labels]
-        output["slot"] = []
+        output["slots"] = []
         extracted_results = []
         words = output_dict["words"][0][1:]
+        slot_name = ''
         for tag, word in zip(output_tags[0], words):
             if tag.startswith('B-'):
                 extracted_results.append([word])
+                slot_name = tag.split('-')[1][2:-1]
             elif tag.startswith('I-'):
                 extracted_results[-1].append(word)
             else:
                 continue
         for result in extracted_results:
-            output["slot"].append(''.join(result))
+            output['slots'].append({slot_name: ''.join(result)})
         return output
 
     def forward(
@@ -606,7 +610,7 @@ class JointIntentSlotModelGoogleBert(Model):
         transformed_tokens = self._text_field_embedder(tokens)
         first_token_tensor = transformed_tokens[:, 0, :]
         encoded_text = transformed_tokens[:, 1:, :]
-        pooled_output = self._norm_layer(
+        pooled_output = self.dropout(
             torch.tanh(self._feedforward(first_token_tensor)))
         tag_logits = self._tag_feedforward(encoded_text)
         mask = input_mask[:, 1:].long()

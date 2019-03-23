@@ -46,7 +46,7 @@ def main():
     vocab = Vocabulary.from_files(vocabulary)
     embedding = EmbeddingV2(
         False,
-        num_embeddings=22123,
+        num_embeddings=23378,
         embedding_dim=200,
         padding_index=0,
         trainable=False)
