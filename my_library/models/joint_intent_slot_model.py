@@ -1,7 +1,8 @@
 import logging
 from typing import Dict, Optional, List, Any, Union
 import warnings
-
+import json
+import math
 from overrides import overrides
 from typing import Dict, Optional
 import numpy as np
@@ -19,6 +20,14 @@ from allennlp.nn import util
 from allennlp.modules.seq2vec_encoders.cnn_encoder import CnnEncoder
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+
+
+def gelu(x):
+    """Implementation of the gelu activation function.
+		For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
+		0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
+	"""
+    return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
 
 
 class JointIntentSlotDepsInnerModel(torch.nn.Module):
@@ -41,7 +50,7 @@ class JointIntentSlotDepsInnerModel(torch.nn.Module):
             hidden_size + cnn_maxpool_output_dim, self.num_intents)
         self._tag_feedforward = nn.Linear(transformer.get_output_dim(),
                                           self.num_tags)
-        self._norm_layer = nn.LayerNorm(transformer.get_output_dim())
+        self._norm_layer = nn.LayerNorm(self.num_tags)
         if dropout:
             self.dropout = torch.nn.Dropout(dropout)
         else:
@@ -61,6 +70,7 @@ class JointIntentSlotDepsInnerModel(torch.nn.Module):
         if self.dropout:
             pooled_output = self.dropout(pooled_output)
         tag_logits = self._tag_feedforward(encoded_text)
+        tag_logits = self._norm_layer(gelu(tag_logits))
         intent_logits = self._intent_feedforward(
             torch.cat(
                 (pooled_output,

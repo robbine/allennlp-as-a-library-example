@@ -19,8 +19,6 @@ from allennlp.common.params import Params
 from allennlp.common.checks import ConfigurationError
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
-_TOKENS = "tokens.txt"
-
 
 def parse_args():
     """Parse command line arguments.
@@ -44,9 +42,9 @@ def parse_args():
     parser.add_argument(
         '--embedder-name',
         help='embedder name',
-        default='_text_field_embedder.token_embedder_tokens.weight')
+        default='bert.embeddings.word_embeddings.weight')
     parser.add_argument(
-        '--vocab-file-folder', help='vocab file folder', default='vocabulary')
+        '--vocab-file', help='vocab file', default='vocabulary')
     parser.add_argument(
         '--output-embedding-file',
         help='output embedding file name',
@@ -65,14 +63,13 @@ def load_weights(serialization_dir, weights_file_name, embedder_name):
     return embedder_weight.data.cpu().numpy()[1:, :]
 
 
-def load_vocab(serialization_dir, vocab_file_folder):
-    vocab_file_path = os.path.join(serialization_dir, vocab_file_folder,
-                                   _TOKENS)
+def load_vocab(serialization_dir, vocab_file):
+    vocab_file_path = os.path.join(serialization_dir, vocab_file)
     tokens = []
     with open(vocab_file_path, 'r') as f:
         for line in f:
             tokens.append(line.strip())
-    return tokens
+    return tokens[1:]
 
 
 def save_embedding_file(weights, tokens, serialization_dir,
@@ -112,7 +109,9 @@ def main():
         print_tensors(args.serialization_dir, args.weights_file_name)
     weights = load_weights(args.serialization_dir, args.weights_file_name,
                            args.embedder_name)
-    tokens = load_vocab(args.serialization_dir, args.vocab_file_folder)
+    tokens = load_vocab(args.serialization_dir, args.vocab_file)
+    print(len(tokens))
+    print(weights.shape[0])
     assert len(tokens) == weights.shape[0]
     save_embedding_file(weights, tokens, args.serialization_dir,
                         args.output_embedding_file)

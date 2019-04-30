@@ -47,4 +47,6 @@ class JointIntentSlotPredictorPlain(Predictor):
         first_intent_score = outputs['top 3 intents'][0]
         first_intent = first_intent_score.split(':')[0]
         first_intent = first_intent.replace('anna_assistant/', '')
-        return first_intent + "\n"
+        # slot_arr = outputs['slots']
+        slot_raw = json.dumps(outputs)
+        return first_intent + "\n" + slot_raw + "\n"
