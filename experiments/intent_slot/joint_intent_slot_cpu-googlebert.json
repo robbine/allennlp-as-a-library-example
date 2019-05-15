@@ -6,7 +6,7 @@
         "token_indexers": {
             "tokens": {
                 "type": "single_id",
-                "lowercase_tokens": true
+                "lowercase_tokens": false,
             }
         },
         "tokenizer": {
@@ -25,7 +25,7 @@
     },
     "iterator": {
         "type": "bucket",
-        "batch_size": 32,
+        "batch_size": 64,
         "sorting_keys": [
             [
                 "tokens",
@@ -60,10 +60,7 @@
                 "type": "embedding",
                 "pretrained_file": "/home/icepine.hans/data/google_bert_embedding.tar.gz",
                 "embedding_dim": 768,
-                "padding_index": 0,
                 "trainable": true,
-                "max_norm": 0.1,
-                "scale_grad_by_freq": true,
             },
         },
         "transformer": {
@@ -91,13 +88,12 @@
     "validation_data_path": "/home/icepine.hans/data/bert_intent_slot_data.manze.validate.txt",
     "trainer": {
         "cuda_device": [1],
-        "grad_clipping": 1.0,
         "num_epochs": 10,
         "optimizer": {
             "type": "bert_adam",
             "lr": 0.00001
         },
         "patience": 3,
-        "validation_metric": "+acc"
+        "validation_metric": "+ac"
     }
 }

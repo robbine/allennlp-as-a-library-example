@@ -60,7 +60,7 @@ def load_weights(serialization_dir, weights_file_name, embedder_name):
         print(name)
     embedder_weight = weights[embedder_name]
     print(embedder_weight.size())
-    return embedder_weight.data.cpu().numpy()[1:, :]
+    return embedder_weight.data.cpu().numpy()[:, :]
 
 
 def load_vocab(serialization_dir, vocab_file):
@@ -69,7 +69,8 @@ def load_vocab(serialization_dir, vocab_file):
     with open(vocab_file_path, 'r') as f:
         for line in f:
             tokens.append(line.strip())
-    return tokens[1:]
+    tokens[0] = "@@PADDING@@"
+    return tokens
 
 
 def save_embedding_file(weights, tokens, serialization_dir,
