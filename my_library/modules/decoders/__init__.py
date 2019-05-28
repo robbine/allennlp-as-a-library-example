@@ -1,1 +1,2 @@
 from my_library.modules.decoders.intent_slot_decoder import IntentSlotModelDecoder
+from my_library.modules.decoders.transformer_decoder import TransformerDecoder

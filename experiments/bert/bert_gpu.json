@@ -38,9 +38,9 @@
         "trainable": true
       }
     },
-    "transformer": {
+    "transformer_encoder": {
       "use_fp16": false,
-      "type": "transformer",
+      "type": "transformer_encoder",
       "num_hidden_layers": 16,
       "intermediate_size": 3072,
       "intermediate_act_fn": "gelu",

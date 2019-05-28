@@ -1,3 +1,4 @@
 from my_library.dataset_readers.semantic_scholar_papers import SemanticScholarDatasetReader
 from my_library.dataset_readers.biao_wen_ming_xi import BiaoWenMingXiDatasetReader
 from my_library.dataset_readers.bert_reader import BertDatasetReader
+from my_library.dataset_readers.mass_reader import MASSDatasetReader
