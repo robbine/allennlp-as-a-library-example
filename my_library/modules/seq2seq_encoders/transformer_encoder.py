@@ -23,8 +23,8 @@ def gelu(x):
     return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
 
 
-@Seq2SeqEncoder.register("transformer")
-class Transformer(Seq2SeqEncoder):
+@Seq2SeqEncoder.register("transformer_encoder")
+class TransformerEncoder(Seq2SeqEncoder):
     # pylint: disable=line-too-long
     """
 	Implements a stacked self-attention encoder similar to the Transformer
@@ -81,7 +81,7 @@ class Transformer(Seq2SeqEncoder):
                  key_depth: int,
                  value_depth: int,
                  max_position_embeddings: int = 512,
-                 type_vocab_size: int = 3,
+                 type_vocab_size: int = 2,
                  attention_dropout_prob: float = 0.1,
                  dropout_prob: float = 0.1,
                  use_token_type=True,
@@ -92,16 +92,16 @@ class Transformer(Seq2SeqEncoder):
                  add_relative_to_values=False,
                  block_length=64,
                  block_width=64) -> None:
-        super(Transformer, self).__init__()
+        super(TransformerEncoder, self).__init__()
         hidden_size = input_size
         self._use_fp16 = use_fp16
         self._use_token_type = use_token_type
         self._use_position_embeddings = use_position_embeddings
-        self._norm_layer = nn.LayerNorm(input_size)
+        self._norm_layer = nn.LayerNorm(hidden_size)
         self._token_type_embedding = EmbeddingV2(self._use_fp16,
-                                                 type_vocab_size, input_size)
+                                                 type_vocab_size, hidden_size)
         self._position_embedding = EmbeddingV2(
-            self._use_fp16, max_position_embeddings, input_size)
+            self._use_fp16, max_position_embeddings, hidden_size)
         self._dropout = Dropout(dropout_prob)
         if intermediate_act_fn == 'gelu':
             self._activation = gelu
@@ -117,10 +117,9 @@ class Transformer(Seq2SeqEncoder):
         for i in range(num_hidden_layers):
             self_attention = MultiHeadAttention(
                 use_fp16, num_heads, input_size, memory_size, key_depth,
-                value_depth, max_position_embeddings, type_vocab_size,
-                attention_dropout_prob, attention_type, max_relative_position,
-                heads_share_relative_embedding, add_relative_to_values,
-                block_length, block_width)
+                value_depth, attention_dropout_prob, attention_type,
+                max_relative_position, heads_share_relative_embedding,
+                add_relative_to_values, block_length, block_width)
             layer_norm_output = nn.LayerNorm(hidden_size)
             layer_norm = nn.LayerNorm(hidden_size)
             feedforward_output = nn.Linear(self_attention.get_output_dim(),
@@ -181,6 +180,9 @@ class Transformer(Seq2SeqEncoder):
             dropout=self._dropout)
         encoder_self_attention_bias = common_attention.create_attention_mask_from_input_mask(
             embedded_tokens, input_mask, self._use_fp16)
+		encoder_padding_mask = input_mask.eq(1)
+		if not encoder_padding_mask.any():
+			encoder_padding_mask = None
         prev_output = embedded_tokens
         for (attention, feedforward_output, feedforward,
              feedforward_intemediate, layer_norm_output, layer_norm) in zip(
@@ -189,27 +191,18 @@ class Transformer(Seq2SeqEncoder):
                  self._feedforward_intermediate_layers,
                  self._layer_norm_output_layers, self._layer_norm_layers):
             layer_input = prev_output
-            attention_output = attention(layer_input, input_mask,
-                                         encoder_self_attention_bias)
-            # TODO(@robbine): a quick work around
+            attention_output = attention(
+                layer_input,
+                encoder_self_attention_bias,
+                key_padding_mask=encoder_padding_mask)
             attention_output = self._dropout(
                 feedforward_output(attention_output))
-            # attention_output = self._dropout(F.linear(attention_output, feedforward_output.weight, feedforward_output.bias))
             attention_output = layer_norm_output(attention_output +
                                                  layer_input)
-            # attention_output = F.layer_norm(attention_output + layer_input, layer_norm_output.normalized_shape, layer_norm_output.weight, layer_norm_output.bias, layer_norm_output.eps)
-            # TODO(@robbine): a quick work around
             attention_intermediate = self._activation(
                 feedforward_intemediate(attention_output))
-            # attention_intermediate = self._activation(F.linear(attention_output, feedforward_intemediate.weight, feedforward_intemediate.bias))
-            # Project output of attention encoder through a feedforward
-            # network and back to the input size for the next layer.
-            # shape (batch_size, timesteps, input_size)
-            # TODO(@robbine): a quick work around
             layer_output = self._dropout(feedforward(attention_intermediate))
-            # layer_output = self._dropout(F.linear(attention_intermediate, feedforward.weight, feedforward.bias))
             layer_output = layer_norm(layer_output + attention_output)
-            # layer_output = F.layer_norm(layer_output + attention_output, layer_norm.normalized_shape, layer_norm.weight, layer_norm.bias, layer_norm.eps)
             prev_output = layer_output
 
         return prev_output

@@ -35,8 +35,8 @@
         "trainable": true
       }
     },
-    "transformer": {
-      "type": "transformer",
+    "transformer_encoder": {
+      "type": "transformer_encoder",
       "use_fp16": false,
       "num_hidden_layers": 12,
       "intermediate_size": 3072,

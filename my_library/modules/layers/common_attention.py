@@ -11,6 +11,11 @@ import my_library.util.util as utils
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 
+def fill_with_neg_inf(t):
+    """FP16 compatible function that fills a tensor with -inf."""
+    return t.float().fill_(float('-inf')).type_as(t)
+
+
 def comma_separated_string_to_integer_list(s):
     return [int(i) for i in s.split(",") if i]
 
@@ -185,7 +190,12 @@ def split_heads(x, num_heads):
     return per_head.transpose(1, 2).contiguous()
 
 
-def dot_product_attention(q, k, v, bias=None, dropout=None):
+def dot_product_attention(q,
+                          k,
+                          v,
+                          bias=None,
+                          dropout=None,
+                          key_padding_mask=None):
     """Dot-product attention.
 	Args:
 	  q: Tensor with shape [..., length_q, depth_k].
@@ -193,6 +203,7 @@ def dot_product_attention(q, k, v, bias=None, dropout=None):
 	    match with q.
 	  v: Tensor with shape [..., length_kv, depth_v] Leading dimensions must
 	    match with q.
+        [batch, num_heads, length, head_dim]
 	  bias: bias Tensor (see attention_bias())
 	  dropout_rate: a float.
 	  image_shapes: optional tuple of integer scalars.
@@ -209,8 +220,10 @@ def dot_product_attention(q, k, v, bias=None, dropout=None):
 	"""
     logits = torch.matmul(q, k.transpose(-1, -2))  # [..., length_q, length_kv]
     if bias is not None:
-        adder = (1.0 - bias) * -10000.0
-        logits += adder
+        logits += bias
+    if key_padding_mask is not None:
+        logits = logits.float().masked_fill(
+            key_padding_mask.unsqueeze(1).unsqueeze(2), float('-inf'))
     weights = torch.nn.functional.softmax(logits, dim=-1)
     if dropout is not None:
         weights = dropout(weights)
@@ -1029,7 +1042,8 @@ def multihead_attention(use_fp16,
     q, k, v = compute_qkv(use_fp16, query_antecedent, memory_antecedent,
                           key_projection, value_projection, query_projection)
 
-    q = split_heads(q, num_heads)
+    q = split_heads(
+        q, num_heads)  # [batch, num_heads, length, channels / num_heads]
     k = split_heads(k, num_heads)
     v = split_heads(v, num_heads)
 
@@ -1140,7 +1154,8 @@ def embedding_postprocessor(input_tensor,
                              "`use_token_type` is True.")
         # This vocab will be small so we always do one-hot here, since it is always
         # faster for a small vocabulary.
-        token_type_embedding_res = token_type_embedding(token_type_ids.long())
+        token_type_embedding_res = token_type_embedding(
+            token_type_ids.long()) * (1 - input_mask_tensor)
         if use_fp16:
             output = torch.add(output, token_type_embedding_res)
         else:
@@ -1150,8 +1165,8 @@ def embedding_postprocessor(input_tensor,
         range_tensor = util.get_range_vector(
             seq_length, util.get_device_of(input_mask_tensor))
         range_tensor = range_tensor.view(1, -1).long()
-        position_embedding_res = position_embedding(
-            input_mask_tensor * range_tensor)
+        position_embedding_res = position_embedding(range_tensor) * (
+            1 - input_mask_tensor)
         if use_fp16:
             output = torch.add(output, position_embedding_res)
         else:
@@ -1173,7 +1188,8 @@ def layer_norm_and_dropout(use_fp16, input_tensor, norm_layer, dropout):
     return output_tensor
 
 
-def create_attention_mask_from_input_mask(from_tensor, to_mask, use_fp16):
+def create_attention_mask_from_input_mask(from_tensor, to_mask,
+                                          use_fp16=False):
     """Create 3D attention mask from a 2D tensor mask.
 
 	Args:
@@ -1199,6 +1215,7 @@ def create_attention_mask_from_input_mask(from_tensor, to_mask, use_fp16):
     # Here we broadcast along two dimensions to create the mask.
     mask = broadcast_ones * unsqueeze_to_mask
     mask = mask.unsqueeze(1)
+    mask = (1.0 - mask) * -1e9
     if use_fp16:
         mask = mask.half()
     return mask

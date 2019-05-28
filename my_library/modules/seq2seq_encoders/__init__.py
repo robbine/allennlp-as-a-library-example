@@ -1,2 +1,2 @@
 from my_library.modules.seq2seq_encoders.multi_head_attention import *
-from my_library.modules.seq2seq_encoders.transformer import Transformer
+from my_library.modules.seq2seq_encoders.transformer_encoder import TransformerEncoder

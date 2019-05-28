@@ -53,7 +53,8 @@ def main():
     import_submodules(args.include_package)
     predictor = _get_predictor(args.archive_file, args.predictor)
     manager = _PredictManager(predictor)
-    print(manager.run('基金评测'))
+    for line in sys.stdin:
+        print(manager.run(line.strip()))
 
 
 if __name__ == '__main__':
