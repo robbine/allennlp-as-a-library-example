@@ -64,6 +64,7 @@
         },
         "wait_user_input": true,
         "use_fp16": false,
+
     },
     "train_data_path": "/home/icepine.hans/data/bert_shenma_data.validate.txt",
     "validation_data_path": "/home/icepine.hans/data/bert_shenma_data.validate.txt",

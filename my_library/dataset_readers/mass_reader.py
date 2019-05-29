@@ -17,7 +17,6 @@ from allennlp.data.token_indexers import TokenIndexer
 from numpy import array
 import six
 
-
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 MaskedLmInstance = collections.namedtuple("MaskedLmInstance",
@@ -84,22 +83,26 @@ class MASSDatasetReader(DatasetReader):
                 if tokens:
                     document.append(tokens)
                     for token in tokens:
-                        dictionary[token.text] = dictionary.get(token.text, 0) + 1
+                        dictionary[token.text] = dictionary.get(token.text,
+                                                                0) + 1
 
         self.rng.shuffle(document)
         instances = []
         if self.lazy:
             for _ in range(self.dupe_factor):
-                for instance in self.create_instances_from_document(document, dictionary):
+                for instance in self.create_instances_from_document(
+                        document, dictionary):
                     yield instance
         else:
             for _ in range(self.dupe_factor):
-                instances.extend(self.create_instances_from_document(document), dictionary)
+                instances.extend(
+                    self.create_instances_from_document(document), dictionary)
             self.rng.shuffle(instances)
             for instance in instances:
                 yield instance
 
-    def text_to_instance(self, tokens, start, end, dictionary=None) -> Instance:
+    def text_to_instance(self, tokens, start, end,
+                         dictionary=None) -> Instance:
         encoder_tokens = []
         decoder_tokens = ['[MASK]']
         target_tokens = []
@@ -118,7 +121,8 @@ class MASSDatasetReader(DatasetReader):
                         if dictionary is None:
                             masked_token = token
                         else:
-                            masked_token = Token(random.choice(list(dictionary.items()))[0])
+                            masked_token = Token(
+                                random.choice(list(dictionary.items()))[0])
                 encoder_tokens.append(masked_token)
                 target_tokens.append(token)
             else:
@@ -135,8 +139,8 @@ class MASSDatasetReader(DatasetReader):
                                             self._token_indexers)
         return Instance(fields)
 
-    def create_instances_from_document(
-            self, document, dictionary=None) -> Iterator[Instance]:  # type: ignore
+    def create_instances_from_document(self, document, dictionary=None
+                                       ) -> Iterator[Instance]:  # type: ignore
         """Creates `TrainingInstance`s for a single document."""
 
         for tokens in document:
