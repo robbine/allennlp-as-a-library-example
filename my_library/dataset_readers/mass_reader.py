@@ -27,7 +27,7 @@ def mask_seq(tokens, rng):
     """Masks input sequence and output start and end positions"""
     length = len(tokens)
     assert length > 1
-    k = length / 2
+    k = length // 2
     start = rng.randint(0, length - k - 1)
     end = start + k - 1
     return start, end
@@ -78,7 +78,7 @@ class MASSDatasetReader(DatasetReader):
                 line = convert_to_unicode(line)
                 line = line.strip()
                 if not line:
-                    break
+                    continue
                 tokens = self._tokenizer.tokenize(line)
                 if tokens:
                     document.append(tokens)
@@ -96,7 +96,7 @@ class MASSDatasetReader(DatasetReader):
         else:
             for _ in range(self.dupe_factor):
                 instances.extend(
-                    self.create_instances_from_document(document), dictionary)
+                    self.create_instances_from_document(document, dictionary))
             self.rng.shuffle(instances)
             for instance in instances:
                 yield instance
@@ -104,7 +104,7 @@ class MASSDatasetReader(DatasetReader):
     def text_to_instance(self, tokens, start, end,
                          dictionary=None) -> Instance:
         encoder_tokens = []
-        decoder_tokens = ['[MASK]']
+        decoder_tokens = [Token('[MASK]')]
         target_tokens = []
         for idx, token in enumerate(tokens):
             if start <= idx <= end:

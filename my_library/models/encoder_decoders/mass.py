@@ -1,5 +1,5 @@
 from typing import Dict, List, Tuple
-
+from typing import Optional
 import numpy
 from overrides import overrides
 import torch
@@ -18,6 +18,7 @@ from allennlp.modules.token_embedders import Embedding
 from allennlp.nn import util
 from allennlp.nn.beam_search import BeamSearch
 from allennlp.training.metrics import BLEU
+from allennlp.nn import InitializerApplicator, RegularizerApplicator
 
 from my_library.modules.decoders.transformer_decoder import TransformerDecoder
 
@@ -74,19 +75,17 @@ class MASS(Model):
     def __init__(self,
                  vocab: Vocabulary,
                  source_embedder: TextFieldEmbedder,
-                 encoder: Seq2SeqEncoder,
+                 transformer_encoder: Seq2SeqEncoder,
                  max_decoding_steps: int,
-                 attention: Attention = None,
-                 attention_function: SimilarityFunction = None,
                  beam_size: int = None,
                  target_namespace: str = "tokens",
                  target_embedding_dim: int = None,
-                 scheduled_sampling_ratio: float = 0.,
-                 use_bleu: bool = True) -> None:
-        super(SimpleSeq2Seq, self).__init__(vocab)
+                 use_bleu: bool = True,
+                 use_fp16: bool = False,
+                 initializer: InitializerApplicator = InitializerApplicator(),
+                 regularizer: Optional[RegularizerApplicator] = None) -> None:
+        super(MASS, self).__init__(vocab)
         self._target_namespace = target_namespace
-        self._scheduled_sampling_ratio = scheduled_sampling_ratio
-
         # We need the start symbol to provide as the input at the first timestep of decoding, and
         # end symbol as a way to indicate the end of the decoded sequence.
         self._start_index = self.vocab.get_token_index(START_SYMBOL,
@@ -113,9 +112,7 @@ class MASS(Model):
         self._source_embedder = source_embedder
 
         # Encodes the sequence of source embeddings into a sequence of hidden states.
-        self._encoder = TransformerEncoder()
-
-        num_classes = self.vocab.get_vocab_size(self._target_namespace)
+        self._encoder = transformer_encoder
 
         # Dense embedding of vocab words in the target space.
         target_embedding_dim = target_embedding_dim or source_embedder.get_output_dim(
@@ -129,8 +126,19 @@ class MASS(Model):
 
         self._decoder_input_dim = target_embedding_dim
 
-        self._decoder = TransformerDecoder(self._decoder_input_dim,
-                                           self._decoder_output_dim)
+        self._decoder = TransformerDecoder(
+            use_fp16,
+            self._target_embedder,
+            decoder_layers=6,
+            dropout=0.1,
+            decoder_embed_dim=source_embedder.get_output_dim(),
+            decoder_ffn_embed_dim=target_embedding_dim,
+            decoder_attention_heads=4,
+            decoder_output_dim=self._decoder_output_dim,
+            max_target_positions=512,
+            attention_dropout=0.1,
+        )
+        initializer(self)
 
     def take_step(self, last_predictions: torch.Tensor,
                   state: Dict[str, torch.Tensor]
@@ -180,6 +188,7 @@ class MASS(Model):
             encoder_tokens: Dict[str, torch.LongTensor],
             decoder_tokens: Dict[str, torch.LongTensor] = None,
             target_tokens: Dict[str, torch.LongTensor] = None,
+            positions: torch.LongTensor = None,
     ) -> Dict[str, torch.Tensor]:
         # pylint: disable=arguments-differ
         """
@@ -198,12 +207,16 @@ class MASS(Model):
         -------
         Dict[str, torch.Tensor]
         """
-        state = self._encode(source_tokens)
+        state = self._encode(encoder_tokens)
 
-        if target_tokens:
+        if decoder_tokens:
             # The `_forward_loop` decodes the input sequence and computes the loss during training
             # and validation.
-            output_dict = self._forward_loop(state, target_tokens)
+            output_dict = self._forward_loop(
+                state,
+                decoder_tokens=decoder_tokens,
+                target_tokens=target_tokens,
+                positions=positions)
         else:
             output_dict = {}
 
@@ -266,10 +279,13 @@ class MASS(Model):
         output_dict["predicted_tokens"] = all_predicted_tokens
         return output_dict
 
-    def _forward_loop(self,
-                      state: Dict[str, torch.Tensor],
-                      target_tokens: Dict[str, torch.LongTensor] = None
-                      ) -> Dict[str, torch.Tensor]:
+    def _forward_loop(
+            self,
+            state: Dict[str, torch.Tensor],
+            decoder_tokens: Dict[str, torch.LongTensor] = None,
+            target_tokens: Dict[str, torch.LongTensor] = None,
+            positions: torch.LongTensor = None,
+    ) -> Dict[str, torch.Tensor]:
         """
         Make forward pass during training or do greedy search during prediction.
 
@@ -278,9 +294,14 @@ class MASS(Model):
         We really only use the predictions from the method to test that beam search
         with a beam size of 1 gives the same results.
         """
+        decoder_token_mask = util.get_text_field_mask(decoder_tokens)
+        decoder_padding_mask = (decoder_token_mask == 0)
         # shape: (batch_size, num_classes)
-        logits, state = self._prepare_output_projections(target_tokens, state)
-
+        logits, state = self._prepare_output_projections(
+            decoder_tokens,
+            state,
+            decoder_padding_mask=decoder_padding_mask,
+            positions=positions)
         # shape: (batch_size, num_classes)
         class_probabilities = F.softmax(logits, dim=-1)
 
@@ -289,9 +310,10 @@ class MASS(Model):
 
         output_dict = {"predictions": predictions}
 
-        if target_tokens:
+        if target_tokens is not None:
             # Compute loss.
-            target_mask = util.get_text_field_mask(target_tokens)
+            target_mask = decoder_token_mask
+            targets = target_tokens["tokens"]
             loss = self._get_loss(logits, targets, target_mask)
             output_dict["loss"] = loss
 
@@ -317,7 +339,9 @@ class MASS(Model):
 
     def _prepare_output_projections(self,
                                     last_predictions: torch.Tensor,
-                                    state: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:  # pylint: disable=line-too-long
+                                    state: Dict[str, torch.Tensor],
+                                    decoder_padding_mask: torch.LongTensor = None,
+                                    positions: torch.LongTensor = None) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:  # pylint: disable=line-too-long
         """
         Decode current state and last prediction to produce produce projections
         into the target space, which can then be used to get probabilities of
@@ -329,13 +353,18 @@ class MASS(Model):
         encoder_out = state["encoder_outputs"]
 
         # shape: (group_size, max_input_sequence_length)
-        encoder_padding_mask = state["source_mask"]
+        encoder_padding_mask = (state["source_mask"] == 0)
 
         # shape: (group_size, target_embedding_dim)
-        decoder_input = self._target_embedder(last_predictions)
-        decoder_output = self._decoder(prev_output_tokens, encoder_out=None)
+        prev_output_tokens = last_predictions
+        decoder_output = self._decoder(
+            prev_output_tokens,
+            encoder_out=encoder_out,
+            encoder_padding_mask=encoder_padding_mask,
+            decoder_padding_mask=decoder_padding_mask,
+            positions=positions)
 
-        return decoder_output
+        return decoder_output, state
 
     @staticmethod
     def _get_loss(logits: torch.LongTensor, targets: torch.LongTensor,
@@ -365,14 +394,8 @@ class MASS(Model):
            against                l1  l2  l3  l4  l5  l6
            (where the input was)  <S> w1  w2  w3  <E> <P>
         """
-        # shape: (batch_size, num_decoding_steps)
-        relevant_targets = targets[:, 1:].contiguous()
-
-        # shape: (batch_size, num_decoding_steps)
-        relevant_mask = target_mask[:, 1:].contiguous()
-
-        return util.sequence_cross_entropy_with_logits(
-            logits, relevant_targets, relevant_mask)
+        return util.sequence_cross_entropy_with_logits(logits, targets,
+                                                       target_mask)
 
     @overrides
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:

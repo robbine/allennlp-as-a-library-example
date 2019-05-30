@@ -183,7 +183,7 @@ class MultiHeadAttention(Seq2SeqEncoder):
 		-------
 		A tensor of shape (batch_size, timesteps, input_dim),
 		"""
-        if encoder_output == None:
+        if encoder_output is None:
             encoder_output = embedded_tokens
         outputs = common_attention.multihead_attention(
             self._use_fp16,

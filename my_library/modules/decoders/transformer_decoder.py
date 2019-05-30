@@ -15,6 +15,14 @@ from my_library.modules.layers import common_attention
 from my_library.modules.seq2seq_encoders.multi_head_attention import MultiHeadAttention
 
 
+def gelu(x):
+    """Implementation of the gelu activation function.
+    For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
+    0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
+    """
+    return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
+
+
 class TransformerDecoderLayer(nn.Module):
     """Decoder layer block.
     In the original paper each operation (multi-head attention, encoder
@@ -41,9 +49,9 @@ class TransformerDecoderLayer(nn.Module):
                  decoder_normalize_before=True,
                  add_bias_kv=False,
                  add_zero_attn=False):
-        super().__init__()
+        super(TransformerDecoderLayer, self).__init__()
         self.embed_dim = decoder_embed_dim
-        self.self_attn = MultiheadAttention(
+        self.self_attn = MultiHeadAttention(
             use_fp16=use_fp16,
             num_heads=decoder_attention_heads,
             input_size=self.embed_dim,
@@ -64,7 +72,7 @@ class TransformerDecoderLayer(nn.Module):
         # TODO  remove this once we update apex with the fix
         self.self_attn_layer_norm = nn.LayerNorm(self.embed_dim)
 
-        self.encoder_attn = MultiheadAttention(
+        self.encoder_attn = MultiHeadAttention(
             use_fp16=use_fp16,
             num_heads=decoder_attention_heads,
             input_size=self.embed_dim,
@@ -79,8 +87,6 @@ class TransformerDecoderLayer(nn.Module):
         self.fc2 = nn.Linear(decoder_ffn_embed_dim, self.embed_dim)
 
         self.final_layer_norm = nn.LayerNorm(self.embed_dim)
-        self._position_embedding = EmbeddingV2(
-            use_fp16, max_position_embeddings, embedding_dim=input_size)
 
     def forward(
             self,
@@ -117,7 +123,7 @@ class TransformerDecoderLayer(nn.Module):
 
         residual = x
         x = self.maybe_layer_norm(self.final_layer_norm, x, before=True)
-        x = self.activation_fn(self.fc1(x))
+        x = gelu(self.fc1(x))
         x = F.dropout(x, p=self.activation_dropout, training=self.training)
         x = self.fc2(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
@@ -161,7 +167,7 @@ class TransformerDecoder(nn.Module):
             max_target_positions,
             attention_dropout,
     ):
-        super().__init__(dictionary)
+        super().__init__()
         self.dropout = dropout
         self._text_field_embedder = text_field_embedder
         input_embed_dim = text_field_embedder.get_output_dim()
@@ -188,11 +194,16 @@ class TransformerDecoder(nn.Module):
             if embed_dim != self.output_embed_dim else None
 
         self.layer_norm = nn.LayerNorm(embed_dim)
+        self._position_embedding = EmbeddingV2(use_fp16, max_target_positions,
+                                               input_embed_dim)
 
     def forward(
             self,
             prev_output_tokens,
             encoder_out=None,
+            encoder_padding_mask=None,
+            decoder_padding_mask=None,
+            positions=None,
     ):
         """
         Args:
@@ -206,10 +217,16 @@ class TransformerDecoder(nn.Module):
                 - a dictionary with any model-specific outputs
         """
         embedded_tokens = self._text_field_embedder(prev_output_tokens)
-        encoder_padding_mask = common_attention.embedding_to_padding(
-            embedded_tokens)
-        x = self.extract_features(embedded_tokens, encoder_out,
-                                  encoder_padding_mask)
+        if positions is not None:
+            position_embedding_res = self._position_embedding(positions.long())
+
+            position_embedding_res = position_embedding_res.float(
+            ).masked_fill(decoder_padding_mask.unsqueeze(-1), 0)
+            embedded_tokens += position_embedding_res
+        x = self.extract_features(
+            embedded_tokens,
+            encoder_out=encoder_out,
+            encoder_padding_mask=encoder_padding_mask)
         x = self.output_layer(x)
         return x
 
@@ -226,7 +243,7 @@ class TransformerDecoder(nn.Module):
                 - a dictionary with any model-specific outputs
         """
         # embed positions
-        x = util.add_positional_features(embedded_tokens)
+        x = embedded_tokens
 
         x = F.dropout(x, p=self.dropout, training=self.training)
 
@@ -238,12 +255,7 @@ class TransformerDecoder(nn.Module):
                 encoder_padding_mask=encoder_padding_mask,
             )
 
-        if self.normalize:
-            x = self.layer_norm(x)
-
-        if self.project_out_dim is not None:
-            x = self.project_out_dim(x)
-
+        x = self.layer_norm(x)
         return x
 
     def output_layer(self, features, **kwargs):
