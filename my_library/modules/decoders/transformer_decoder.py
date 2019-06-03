@@ -42,7 +42,6 @@ class TransformerDecoderLayer(nn.Module):
                  decoder_ffn_embed_dim,
                  decoder_attention_heads,
                  attention_dropout,
-                 activation_fn='relu',
                  dropout=0,
                  activation_dropout=0,
                  relu_dropout=0.1,
@@ -61,7 +60,6 @@ class TransformerDecoderLayer(nn.Module):
             attention_dropout_prob=attention_dropout,
         )
         self.dropout = dropout
-        self.activation_fn = Activation.by_name(activation_fn)
         self.activation_dropout = activation_dropout
         if self.activation_dropout == 0:
             self.activation_dropout = relu_dropout
@@ -88,6 +86,12 @@ class TransformerDecoderLayer(nn.Module):
 
         self.final_layer_norm = nn.LayerNorm(self.embed_dim)
 
+    def buffered_future_mask(self, tensor):
+        dim = tensor.size(1)
+        self._future_mask = torch.triu(
+            common_attention.fill_with_neg_inf(tensor.new(dim, dim)), 1)
+        return self._future_mask
+
     def forward(
             self,
             x,
@@ -104,8 +108,9 @@ class TransformerDecoderLayer(nn.Module):
         """
         residual = x
         x = self.maybe_layer_norm(self.self_attn_layer_norm, x, before=True)
-        decoder_self_attention_bias = common_attention.attention_bias_lower_triangle(
-            x.size(1))
+        # decoder_self_attention_bias = common_attention.attention_bias_lower_triangle(
+        #     x.size(1))
+        decoder_self_attention_bias = self.buffered_future_mask(x)
         x = self.self_attn(x, decoder_self_attention_bias)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = residual + x
@@ -270,19 +275,6 @@ class TransformerDecoder(nn.Module):
             return self.max_target_positions
         return min(self.max_target_positions,
                    self.embed_positions.max_positions())
-
-    def buffered_future_mask(self, tensor):
-        dim = tensor.size(0)
-        if not hasattr(
-                self, '_future_mask'
-        ) or self._future_mask is None or self._future_mask.device != tensor.device:
-            self._future_mask = torch.triu(
-                utils.fill_with_neg_inf(tensor.new(dim, dim)), 1)
-        if self._future_mask.size(0) < dim:
-            self._future_mask = torch.triu(
-                utils.fill_with_neg_inf(self._future_mask.resize_(dim, dim)),
-                1)
-        return self._future_mask[:dim, :dim]
 
     def upgrade_state_dict_named(self, state_dict, name):
         """Upgrade a (possibly old) state dict for new versions of fairseq."""

@@ -92,12 +92,14 @@ class MASS(Model):
                                                        self._target_namespace)
         self._end_index = self.vocab.get_token_index(END_SYMBOL,
                                                      self._target_namespace)
+        self._mask_index = self.vocab.get_token_index('[MASK]',
+                                                      self._target_namespace)
 
         if use_bleu:
             pad_index = self.vocab.get_token_index(self.vocab._padding_token,
                                                    self._target_namespace)  # pylint: disable=protected-access
             self._bleu = BLEU(exclude_indices={
-                pad_index, self._end_index, self._start_index
+                pad_index, self._end_index, self._start_index, self._mask_index
             })
         else:
             self._bleu = None
@@ -131,7 +133,7 @@ class MASS(Model):
             self._target_embedder,
             decoder_layers=6,
             dropout=0.1,
-            decoder_embed_dim=source_embedder.get_output_dim(),
+            decoder_embed_dim=self._encoder_output_dim,
             decoder_ffn_embed_dim=target_embedding_dim,
             decoder_attention_heads=4,
             decoder_output_dim=self._decoder_output_dim,
@@ -173,12 +175,14 @@ class MASS(Model):
             equal to ``batch_size``, since the group may contain multiple states
             for each source sentence in the batch.
         """
+        start_predictions = {'tokens': last_predictions.unsqueeze(1)}
         # shape: (group_size, num_classes)
         output_projections, state = self._prepare_output_projections(
-            last_predictions, state)
+            start_predictions, state)
 
         # shape: (group_size, num_classes)
         class_log_probabilities = F.log_softmax(output_projections, dim=-1)
+        class_log_probabilities = class_log_probabilities.squeeze(1)
 
         return class_log_probabilities, state
 
@@ -221,14 +225,19 @@ class MASS(Model):
             output_dict = {}
 
         if not self.training:
-            predictions = self._forward_beam_search(state)
-            output_dict.update(predictions)
-            if target_tokens and self._bleu:
-                # shape: (batch_size, beam_size, max_sequence_length)
-                top_k_predictions = output_dict["predictions"]
-                # shape: (batch_size, max_predicted_sequence_length)
-                best_predictions = top_k_predictions[:, 0, :]
-                self._bleu(best_predictions, target_tokens["tokens"])
+            if not decoder_tokens:
+                predictions = self._forward_beam_search(state)
+                output_dict.update(predictions)
+                if target_tokens and self._bleu:
+                    # shape: (batch_size, beam_size, max_sequence_length)
+                    top_k_predictions = output_dict["predictions"]
+                    # shape: (batch_size, max_predicted_sequence_length)
+                    best_predictions = top_k_predictions[:, 0, :]
+                    self._bleu(best_predictions, target_tokens["tokens"])
+            else:
+                if target_tokens and self._bleu:
+                    best_predictions = output_dict["predictions"]
+                    self._bleu(best_predictions, target_tokens["tokens"])
 
         return output_dict
 
@@ -306,7 +315,7 @@ class MASS(Model):
         class_probabilities = F.softmax(logits, dim=-1)
 
         # shape (predicted_classes): (batch_size,)
-        _, predictions = torch.max(class_probabilities, 1)
+        _, predictions = torch.max(class_probabilities, -1)
 
         output_dict = {"predictions": predictions}
 
@@ -322,14 +331,13 @@ class MASS(Model):
     def _forward_beam_search(
             self, state: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Make forward pass during prediction using a beam search."""
-        batch_size = state["source_mask"].size()[0]
-        start_predictions = state["source_mask"].new_full(
-            (batch_size, ), fill_value=self._start_index)
-
+        batch_size = state["source_mask"].size(0)
+        start_tokens = state["source_mask"].new_full(
+            (batch_size, ), fill_value=self._mask_index)
         # shape (all_top_k_predictions): (batch_size, beam_size, num_decoding_steps)
         # shape (log_probabilities): (batch_size, beam_size)
         all_top_k_predictions, log_probabilities = self._beam_search.search(
-            start_predictions, state, self.take_step)
+            start_tokens, state, self.take_step)
 
         output_dict = {
             "class_log_probabilities": log_probabilities,
@@ -338,7 +346,7 @@ class MASS(Model):
         return output_dict
 
     def _prepare_output_projections(self,
-                                    last_predictions: torch.Tensor,
+                                    last_predictions: Dict[str, torch.LongTensor],
                                     state: Dict[str, torch.Tensor],
                                     decoder_padding_mask: torch.LongTensor = None,
                                     positions: torch.LongTensor = None) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:  # pylint: disable=line-too-long
@@ -386,7 +394,7 @@ class MASS(Model):
         appropriate comparison.  Consider a single example where the target has 3 words, and
         padding is to 7 tokens.
            The complete sequence would correspond to <S> w1  w2  w3  <E> <P> <P>
-           and the mask would be                     1   1   1   1   1   0   0
+           and the mask would be                      1   1   1   1   1   0   0
            and let the logits be                     l1  l2  l3  l4  l5  l6
         We actually need to compare:
            the sequence           w1  w2  w3  <E> <P> <P>
