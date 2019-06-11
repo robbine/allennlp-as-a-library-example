@@ -31,7 +31,7 @@ class TransformerDecoderLayer(nn.Module):
     robust when preprocessing each layer with layernorm and postprocessing with:
     `dropout -> add residual`. We default to the approach in the paper, but the
     tensor2tensor approach can be enabled by setting
-    *args.decoder_normalize_before* to ``True``.
+    *decoder_normalize_before* to ``True``.
     Args:
         args (argparse.Namespace): parsed command-line arguments
     """
@@ -45,9 +45,7 @@ class TransformerDecoderLayer(nn.Module):
                  dropout=0,
                  activation_dropout=0,
                  relu_dropout=0.1,
-                 decoder_normalize_before=True,
-                 add_bias_kv=False,
-                 add_zero_attn=False):
+                 decoder_normalize_before=True):
         super(TransformerDecoderLayer, self).__init__()
         self.embed_dim = decoder_embed_dim
         self.self_attn = MultiHeadAttention(
@@ -86,17 +84,12 @@ class TransformerDecoderLayer(nn.Module):
 
         self.final_layer_norm = nn.LayerNorm(self.embed_dim)
 
-    def buffered_future_mask(self, tensor):
-        dim = tensor.size(1)
-        self._future_mask = torch.triu(
-            common_attention.fill_with_neg_inf(tensor.new(dim, dim)), 1)
-        return self._future_mask
-
     def forward(
             self,
             x,
             encoder_out=None,
             encoder_padding_mask=None,
+            future_mask=None,
     ):
         """
         Args:
@@ -110,7 +103,7 @@ class TransformerDecoderLayer(nn.Module):
         x = self.maybe_layer_norm(self.self_attn_layer_norm, x, before=True)
         # decoder_self_attention_bias = common_attention.attention_bias_lower_triangle(
         #     x.size(1))
-        decoder_self_attention_bias = self.buffered_future_mask(x)
+        decoder_self_attention_bias = future_mask
         x = self.self_attn(x, decoder_self_attention_bias)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = residual + x
@@ -180,10 +173,7 @@ class TransformerDecoder(nn.Module):
         self.output_embed_dim = decoder_output_dim
 
         self.max_target_positions = max_target_positions
-
-        self.project_in_dim = nn.Linear(
-            input_embed_dim, embed_dim,
-            bias=False) if embed_dim != input_embed_dim else None
+        self.embed_scale = math.sqrt(embed_dim)
 
         self.layers = nn.ModuleList([])
         self.layers.extend([
@@ -193,14 +183,15 @@ class TransformerDecoder(nn.Module):
             for _ in range(decoder_layers)
         ])
 
-        self.adaptive_softmax = None
-
-        self.project_out_dim = nn.Linear(embed_dim, self.output_embed_dim, bias=False) \
-            if embed_dim != self.output_embed_dim else None
-
         self.layer_norm = nn.LayerNorm(embed_dim)
         self._position_embedding = EmbeddingV2(use_fp16, max_target_positions,
                                                input_embed_dim)
+
+    def buffered_future_mask(self, tensor):
+        dim = tensor.size(1)
+        future_mask = torch.triu(
+            common_attention.fill_with_neg_inf(tensor.new(dim, dim)), 1)
+        return future_mask
 
     def forward(
             self,
@@ -221,7 +212,8 @@ class TransformerDecoder(nn.Module):
                 - the decoder's output of shape `(batch, tgt_len, vocab)`
                 - a dictionary with any model-specific outputs
         """
-        embedded_tokens = self._text_field_embedder(prev_output_tokens)
+        embedded_tokens = self._text_field_embedder(
+            prev_output_tokens) * self.embed_scale
         if positions is not None:
             position_embedding_res = self._position_embedding(positions.long())
 
@@ -251,15 +243,15 @@ class TransformerDecoder(nn.Module):
         x = embedded_tokens
 
         x = F.dropout(x, p=self.dropout, training=self.training)
-
+        future_mask = self.buffered_future_mask(x)
         # decoder layers
         for layer in self.layers:
             x = layer(
                 x,
                 encoder_out=encoder_out,
                 encoder_padding_mask=encoder_padding_mask,
+                future_mask=future_mask,
             )
-
         x = self.layer_norm(x)
         return x
 
@@ -267,7 +259,7 @@ class TransformerDecoder(nn.Module):
         """Project features to the vocabulary size."""
         embedding_table = self._text_field_embedder.get_embedding_by_name(
             'tokens')
-        return F.linear(features, embedding_table)
+        return F.linear(features, embedding_table.data)
 
     def max_positions(self):
         """Maximum output length supported by the decoder."""
