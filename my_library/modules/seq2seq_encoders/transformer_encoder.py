@@ -113,6 +113,7 @@ class TransformerEncoder(Seq2SeqEncoder):
         self._feedforward_layers = nn.ModuleList()
         self._feedforward_output_layers = nn.ModuleList()
         self._feedforward_intermediate_layers = nn.ModuleList()
+        self.embed_scale = math.sqrt(hidden_size)
 
         for i in range(num_hidden_layers):
             self_attention = MultiHeadAttention(
@@ -167,6 +168,7 @@ class TransformerEncoder(Seq2SeqEncoder):
                 embedded_tokens: torch.FloatTensor,
                 input_mask: torch.LongTensor,
                 segment_ids: torch.LongTensor = None):  # pylint: disable=arguments-differ
+        embedded_tokens = embedded_tokens * self.embed_scale
         embedded_tokens = common_attention.embedding_postprocessor(
             embedded_tokens,
             input_mask.long(),

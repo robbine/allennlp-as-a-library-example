@@ -114,7 +114,8 @@ class EmbeddingV2(TokenEmbedder):
             self.weight = torch.nn.Parameter(weight, requires_grad=trainable)
 
         if self.padding_index is not None:
-            self.weight.data[self.padding_index].fill_(0)
+            with torch.no_grad():
+                self.weight.data[self.padding_index].fill_(0)
 
     def get_embedding_weight(self):
         return self.weight

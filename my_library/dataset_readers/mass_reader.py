@@ -4,6 +4,7 @@ import logging
 import random
 import time
 import collections
+import numpy as np
 from typing import Iterator
 
 from allennlp.common import Params, Tqdm
@@ -23,13 +24,64 @@ MaskedLmInstance = collections.namedtuple("MaskedLmInstance",
                                           ["index", "label"])
 
 
+def random_start(end):
+    """
+    We control 20% mask segment is at the start of sentences
+               20% mask segment is at the end   of sentences
+               60% mask segment is at random positions,
+    """
+    p = np.random.random()
+    if p >= 0.8:
+        return 1
+    elif p >= 0.6:
+        return end - 1
+    else:
+        return np.random.randint(1, end)
+
+
+def mask_word(token, dictionary=None):
+    # 80% of the time, replace with [MASK]
+    if np.random.random() < 0.8:
+        masked_token = Token("[MASK]")
+    else:
+        # 10% of the time, keep original
+        if np.random.random() < 0.5:
+            masked_token = token
+        # 10% of the time, replace with random word
+        else:
+            if dictionary is None:
+                masked_token = token
+            else:
+                masked_token = Token(
+                    random.choice(list(dictionary.items()))[0])
+
+
+def mask_sent(tokens, l, mask_ratio=0.5
+              ):  # x.size()==[seq_len, batch_size]  l.size()==[batch_size]
+    mask_len = round(len(tokens) * mask_ratio)
+    start = random_start(len(tokens) - mask_len + 1)
+    end = start + mask_len - 1
+    return start, end
+
+
 def mask_seq(tokens, rng):
-    """Masks input sequence and output start and end positions"""
-    length = len(tokens)
+    """Masks input sequence and output start and end positions
+    We control 20% mask segment is at the start of sentences
+               20% mask segment is at the end   of sentences
+               60% mask segment is at random positions,
+    """
+    length = len(tokens) - 2
     assert length > 1
-    k = length // 2
-    start = rng.randint(0, length - k - 1)
-    end = start + k - 1
+    mask_len = round(length * mask_ratio)
+    p = np.random.random()
+    if p >= 0.8:
+        return 1, k
+    elif p >= 0.6:
+        return end - 1
+    else:
+        return np.random.randint(1, end)
+    start = rng.randint(0, length - mask_len - 1)
+    end = start + mask_len - 1
     return start, end
 
 
@@ -108,21 +160,7 @@ class MASSDatasetReader(DatasetReader):
         target_tokens = []
         for idx, token in enumerate(tokens):
             if start <= idx <= end:
-                masked_token = None
-                # 80% of the time, replace with [MASK]
-                if self.rng.random() < 0.8:
-                    masked_token = Token("[MASK]")
-                else:
-                    # 10% of the time, keep original
-                    if self.rng.random() < 0.5:
-                        masked_token = token
-                    # 10% of the time, replace with random word
-                    else:
-                        if dictionary is None:
-                            masked_token = token
-                        else:
-                            masked_token = Token(
-                                random.choice(list(dictionary.items()))[0])
+                masked_token = mask_word(token, dictionary)
                 encoder_tokens.append(masked_token)
                 target_tokens.append(token)
             else:
