@@ -1,5 +1,5 @@
 from my_library.modules.seq2seq_encoders.multi_head_attention import *
 from my_library.modules.seq2seq_encoders.transformer_encoder import TransformerEncoder
 from my_library.modules.seq2seq_encoders.on_lstm import ONLSTMStack
-from my_library.modules.seq2seq_encoders.rel_multi_head_attention import RelMultiHeadAttention, RelPartialLearnableMultiHeadAttention
+from my_library.modules.seq2seq_encoders.rel_multi_head_attention import RelPartialLearnableMultiHeadAttention
 from my_library.modules.seq2seq_encoders.transformer_xl import TransformerXL

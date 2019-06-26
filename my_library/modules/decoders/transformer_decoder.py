@@ -45,7 +45,8 @@ class TransformerDecoderLayer(nn.Module):
                  dropout=0,
                  activation_dropout=0,
                  relu_dropout=0.1,
-                 decoder_normalize_before=True):
+                 decoder_normalize_before=True,
+                 no_encoder_attn=False):
         super(TransformerDecoderLayer, self).__init__()
         self.embed_dim = decoder_embed_dim
         self.self_attn = MultiHeadAttention(
@@ -68,16 +69,20 @@ class TransformerDecoderLayer(nn.Module):
         # TODO  remove this once we update apex with the fix
         self.self_attn_layer_norm = nn.LayerNorm(self.embed_dim)
 
-        self.encoder_attn = MultiHeadAttention(
-            use_fp16=use_fp16,
-            num_heads=decoder_attention_heads,
-            input_size=self.embed_dim,
-            memory_size=self.embed_dim,
-            key_depth=self.embed_dim,
-            value_depth=self.embed_dim,
-            attention_dropout_prob=attention_dropout,
-        )
-        self.encoder_attn_layer_norm = nn.LayerNorm(self.embed_dim)
+        if no_encoder_attn:
+            self.encoder_attn = None
+            self.encoder_attn_layer_norm = None
+        else:
+            self.encoder_attn = MultiHeadAttention(
+                use_fp16=use_fp16,
+                num_heads=decoder_attention_heads,
+                input_size=self.embed_dim,
+                memory_size=self.embed_dim,
+                key_depth=self.embed_dim,
+                value_depth=self.embed_dim,
+                attention_dropout_prob=attention_dropout,
+            )
+            self.encoder_attn_layer_norm = nn.LayerNorm(self.embed_dim)
 
         self.fc1 = nn.Linear(self.embed_dim, decoder_ffn_embed_dim)
         self.fc2 = nn.Linear(decoder_ffn_embed_dim, self.embed_dim)
@@ -90,6 +95,8 @@ class TransformerDecoderLayer(nn.Module):
             encoder_out=None,
             encoder_padding_mask=None,
             future_mask=None,
+            prev_self_attn_state=None,
+            prev_attn_state=None,
     ):
         """
         Args:
@@ -101,23 +108,34 @@ class TransformerDecoderLayer(nn.Module):
         """
         residual = x
         x = self.maybe_layer_norm(self.self_attn_layer_norm, x, before=True)
-        # decoder_self_attention_bias = common_attention.attention_bias_lower_triangle(
-        #     x.size(1))
-        decoder_self_attention_bias = future_mask
-        x = self.self_attn(x, decoder_self_attention_bias)
+        if prev_self_attn_state is not None:
+            if incremental_state is None:
+                increment_state = {}
+            prev_key, prev_value = prev_self_attn_state
+            saved_state = {'prev_key': prev_key, 'prev_value': prev_value}
+            self.self_attn._set_input_buffer(increment_state, saved_state)
+        x = self.self_attn(x, future_mask)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = residual + x
         x = self.maybe_layer_norm(self.self_attn_layer_norm, x, after=True)
 
-        residual = x
-        x = self.maybe_layer_norm(self.encoder_attn_layer_norm, x, before=True)
-        # encoder_decoder_attention_bias = common_attention.attention_bias_ignore_padding(
-        # encoder_padding_mask)
-        x = self.encoder_attn(
-            x, None, encoder_out, key_padding_mask=encoder_padding_mask)
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        x = residual + x
-        x = self.maybe_layer_norm(self.encoder_attn_layer_norm, x, after=True)
+        if self.encoder_attn is not None:
+            residual = x
+            x = self.maybe_layer_norm(
+                self.encoder_attn_layer_norm, x, before=True)
+            if prev_attn_state is not None:
+                if increment_state is None:
+                    increment_state = {}
+                prev_key, prev_value = prev_attn_state
+                saved_state = {'prev_key': prev_key, 'prev_value': prev_value}
+                self.encoder_attn._set_input_buffer(increment_state,
+                                                    saved_state)
+            x = self.encoder_attn(
+                x, None, encoder_out, key_padding_mask=encoder_padding_mask)
+            x = F.dropout(x, p=self.dropout, training=self.training)
+            x = residual + x
+            x = self.maybe_layer_norm(
+                self.encoder_attn_layer_norm, x, after=True)
 
         residual = x
         x = self.maybe_layer_norm(self.final_layer_norm, x, before=True)
@@ -164,6 +182,7 @@ class TransformerDecoder(nn.Module):
             decoder_output_dim,
             max_target_positions,
             attention_dropout,
+            no_encoder_attn=False,
     ):
         super().__init__()
         self.dropout = dropout
@@ -177,10 +196,13 @@ class TransformerDecoder(nn.Module):
 
         self.layers = nn.ModuleList([])
         self.layers.extend([
-            TransformerDecoderLayer(use_fp16, decoder_embed_dim,
-                                    decoder_ffn_embed_dim,
-                                    decoder_attention_heads, attention_dropout)
-            for _ in range(decoder_layers)
+            TransformerDecoderLayer(
+                use_fp16,
+                decoder_embed_dim,
+                decoder_ffn_embed_dim,
+                decoder_attention_heads,
+                attention_dropout,
+                no_encoder_attn=no_encoder_attn) for _ in range(decoder_layers)
         ])
 
         self.layer_norm = nn.LayerNorm(embed_dim)

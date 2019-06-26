@@ -11,6 +11,24 @@ import my_library.util.util as utils
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 
+def _ref_shift(
+        x, zero_triu=False
+):  #x.size() == [query_length, key_length, batch_size, num_heads]
+    query_length, key_length, batch_size, num_heads = x.size()
+    zero_pad = torch.zeros((query_length, 1, batch_size, num_heads))
+    x_padded = torch.cat(
+        [zero_pad, x],
+        dim=1)  # [query_length, key_length + 1, batch_size, num_heads]
+    x_padded = x_padded.view(key_length + 1, query_length, batch_size,
+                             num_heads)
+    x = x_padded[1:].view_as(x)
+    if zero_triu:
+        ones = torch.ones((query_length, key_length))
+        x = x * torch.tri(ones, key_length - query_length)[:, :, None, None]
+    # x.size() == [query_length, key_length, batch_size, num_heads]
+    return x
+
+
 def fill_with_neg_inf(t):
     """FP16 compatible function that fills a tensor with -inf."""
     return t.float().fill_(float('-inf')).type_as(t)
@@ -186,6 +204,50 @@ def split_heads(x, num_heads):
     return per_head.transpose(1, 2).contiguous()
 
 
+def rel_partial_dot_product_attention(
+        q,
+        k,
+        v,
+        r,  # r.size() == [rlen, n_head, d_head]
+        bias=None,
+        dropout=None,
+        key_padding_mask=None):
+    bsz, n_head, qlen, d_head = q.size()
+    bsz, n_head, klen, d_head = k.size()
+    rlen = r.size(0)
+    w_head_q = q.permute(2, 0, 1, 3)
+    w_head_k = k.permute(2, 0, 1, 3)
+    w_head_v = v.permute(2, 0, 1, 3)
+    r_head_k = r.view(rlen, n_head, d_head)
+    #### compute attention score
+    rw_head_q = w_head_q + r_w_bias  # qlen x bsz x n_head x d_head
+    AC = torch.einsum('ibnd,jbnd->ijbn',
+                      (rw_head_q, w_head_k))  # qlen x klen x bsz x n_head
+
+    rr_head_q = w_head_q + r_r_bias
+    BD = torch.einsum('ibnd,jnd->ijbn',
+                      (rr_head_q, r_head_k))  # qlen x klen x bsz x n_head
+    BD = _rel_shift(BD)
+
+    # [qlen x klen x bsz x n_head]
+    attn_score = AC + BD
+    if key_padding_mask not None and key_padding_mask.any().item():
+        if key_padding_mask.dim() == 2:
+            attn_score = attn_score.float().mask_fill(key_padding_mask[None,:,:,None], -float('inf')).type_as(attn_score)
+        elif key_padding_mask.dim() == 3:
+            attn_score = attn_score.float().mask_fill(key_padding_mask[:,:,:,None], -float('inf')).type_as(attn_score)
+    # [qlen x klen x bsz x n_head]
+    attn_prob = F.softmax(attn_score, dim=1)
+    attn_prob = dropout(attn_prob)
+
+    #### compute attention vector
+    attn_vec = torch.einsum('ijbn,jbnd->ibnd', (attn_prob, w_head_v))
+
+    # [qlen x bsz x n_head x d_head]
+    attn_vec = attn_vec.contiguous().view(
+        attn_vec.size(0), attn_vec.size(1), n_head * d_head)
+    return attn_vec.transpose(0, 1)
+
 def dot_product_attention(q,
                           k,
                           v,
@@ -214,9 +276,11 @@ def dot_product_attention(q,
 	Returns:
 	  Tensor with shape [..., length_q, depth_v].
 	"""
-    logits = torch.matmul(q, k.transpose(-1, -2))  # [..., length_q, length_kv]
+    logits = torch.matmul(q, k.transpose(
+        -1, -2))  # [batch, num_heads, length_q, length_kv]
     if bias is not None:
         logits += bias
+    # [batch, 1, 1, length_kv]
     if key_padding_mask is not None:
         logits = logits.float().masked_fill(
             key_padding_mask.unsqueeze(1).unsqueeze(2), float('-inf'))
@@ -949,6 +1013,7 @@ def multihead_attention(use_fp16,
                         total_value_depth,
                         num_heads,
                         dropout,
+                        saved_state=None,
                         key_padding_mask=None,
                         key_embedding=None,
                         value_embedding=None,
@@ -1045,11 +1110,33 @@ def multihead_attention(use_fp16,
     v = split_heads(v, num_heads)
 
     key_depth_per_head = total_key_depth // num_heads
+    value_depth_per_head = total_value_depth // num_heads
     q *= key_depth_per_head**-0.5
+
+    bsz = memory_antecedent.size(0)
+    if saved_state is not None:
+        if 'prev_key' in saved_state:
+            prev_key = saved_state['prev_key'].view(bsz * num_heads, -1,
+                                                    key_depth_per_head)
+            k = torch.cat((prev_key, k), dim=1)
+        if 'prev_value' in saved_state:
+            prev_value = saved_state['prev_value'].view(
+                bsz * num_heads, -1, value_depth_per_head)
+            v = torch.cat((prev_value, v), dim=1)
+        saved_state['prev_key'] = k.view(bsz, num_heads, -1,
+                                         key_depth_per_head)
+        saved_state['prev_value'] = v.view(bsz, num_heads, -1,
+                                           value_depth_per_head)
 
     if attention_type == "dot_product":
         x = dot_product_attention(
-            q, k, v, bias, dropout, key_padding_mask=key_padding_mask)
+            q,
+            k,
+            v,
+            bias,
+            dropout,
+            key_padding_mask=key_padding_mask,
+        )
     elif attention_type == "dot_product_relative":
         x = dot_product_attention_relative(
             q,

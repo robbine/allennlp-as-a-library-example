@@ -1,5 +1,4 @@
 from typing import Dict
-
 from allennlp.modules import Seq2SeqEncoder
 from overrides import overrides
 import torch
@@ -7,6 +6,7 @@ import torch.nn as nn
 from torch.nn import Dropout, Linear
 
 from my_library.modules.layers import common_attention
+from my_library.util.util import _get_full_incremental_state_key, get_incremental_state, set_incremental_state
 
 
 @Seq2SeqEncoder.register("multi_head_attention")
@@ -170,6 +170,7 @@ class MultiHeadAttention(Seq2SeqEncoder):
             bias: torch.LongTensor,
             encoder_output: torch.FloatTensor = None,
             key_padding_mask=None,
+            incremental_state=None,
     ) -> torch.FloatTensor:
         """
 		Parameters
@@ -183,6 +184,11 @@ class MultiHeadAttention(Seq2SeqEncoder):
 		-------
 		A tensor of shape (batch_size, timesteps, input_dim),
 		"""
+        if incremental_state is not None:
+            saved_state = self._get_input_buffer(incremental_state)
+        else:
+            saved_state = None
+
         if encoder_output is None:
             encoder_output = embedded_tokens
         outputs = common_attention.multihead_attention(
@@ -194,6 +200,7 @@ class MultiHeadAttention(Seq2SeqEncoder):
             self._value_depth,
             self._num_heads,
             self._attention_dropout,
+            saved_state=saved_state,
             key_padding_mask=key_padding_mask,
             key_embedding=self._key_embedding,
             value_embedding=self._value_embedding,
@@ -209,4 +216,26 @@ class MultiHeadAttention(Seq2SeqEncoder):
             block_length=self._block_length,
             block_width=self._block_width,
         )
+        if saved_state is not None:
+            self._set_input_buffer(incremental_state, save_state)
         return outputs
+
+    def reorder_incremental_state(self, incremental_state, new_order):
+        """Reorder buffered internal state (for incremental generation)."""
+        input_buffer = self._get_input_buffer(incremental_state)
+        if input_buffer is not None:
+            for k in input_buffer.keys():
+                input_buffer[k] = input_buffer[k].index_select(0, new_order)
+            self._set_input_buffer(incremental_state, input_buffer)
+
+    def _get_input_buffer(self, incremental_state):
+        key = 'attn_state'
+        return get_incremental_state(
+            self,
+            incremental_state,
+            key,
+        ) or {}
+
+    def _set_input_buffer(self, incremental_state, buffer):
+        key = 'attn_state'
+        set_incremental_state(self, incremental_state, key, buffer)

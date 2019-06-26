@@ -9,7 +9,7 @@ from torch.nn import Dropout, Linear
 from my_library.modules.layers import common_attention
 
 
-class RelMultiHeadAttention(nn.Module):
+class RelPartialLearnableMultiHeadAttention(nn.Module):
     def __init__(self,
                  n_head,
                  d_model,
@@ -20,7 +20,7 @@ class RelMultiHeadAttention(nn.Module):
                  ext_len=None,
                  mem_len=None,
                  pre_lnorm=False):
-        super(RelMultiHeadAttention, self).__init__()
+        super(RelPartialLearnableMultiHeadAttention, self).__init__()
 
         self.n_head = n_head
         self.d_model = d_model
@@ -38,78 +38,6 @@ class RelMultiHeadAttention(nn.Module):
         self.scale = 1 / (d_head**0.5)
 
         self.pre_lnorm = pre_lnorm
-
-    def _parallelogram_mask(self, h, w, left=False):
-        mask = torch.ones((h, w)).byte()
-        m = min(h, w)
-        mask[:m, :m] = torch.triu(mask[:m, :m])
-        mask[-m:, -m:] = torch.tril(mask[-m:, -m:])
-
-        if left:
-            return mask
-        else:
-            return mask.flip(0)
-
-    def _shift(self, x, qlen, klen, mask, left=False):
-        if qlen > 1:
-            zero_pad = torch.zeros((x.size(0), qlen - 1, x.size(2), x.size(3)),
-                                   device=x.device,
-                                   dtype=x.dtype)
-        else:
-            zero_pad = torch.zeros(0, device=x.device, dtype=x.dtype)
-
-        if left:
-            mask = mask.flip(1)
-            x_padded = torch.cat([zero_pad, x], dim=1).expand(qlen, -1, -1, -1)
-        else:
-            x_padded = torch.cat([x, zero_pad], dim=1).expand(qlen, -1, -1, -1)
-
-        x = x_padded.masked_select(mask[:,:,None,None]) \
-                    .view(qlen, klen, x.size(2), x.size(3))
-
-        return x
-
-    def _rel_shift(self, x, zero_triu=False):
-        zero_pad = torch.zeros((x.size(0), 1, *x.size()[2:]),
-                               device=x.device,
-                               dtype=x.dtype)
-        x_padded = torch.cat([zero_pad, x], dim=1)
-
-        x_padded = x_padded.view(x.size(1) + 1, x.size(0), *x.size()[2:])
-
-        x = x_padded[1:].view_as(x)
-
-        if zero_triu:
-            ones = torch.ones((x.size(0), x.size(1)))
-            x = x * torch.tril(ones, x.size(1) - x.size(0))[:, :, None, None]
-
-        return x
-
-    def forward(self, w, r, attn_mask=None, mems=None):
-        raise NotImplementedError
-
-
-class RelPartialLearnableMultiHeadAttention(RelMultiHeadAttention):
-    def __init__(self,
-                 n_head,
-                 d_model,
-                 d_head,
-                 dropout,
-                 dropatt=0,
-                 tgt_len=None,
-                 ext_len=None,
-                 mem_len=None,
-                 pre_lnorm=False):
-        super(RelPartialLearnableMultiHeadAttention, self).__init__(
-            n_head,
-            d_model,
-            d_head,
-            dropout,
-            dropatt=0,
-            tgt_len=None,
-            ext_len=None,
-            mem_len=None,
-            pre_lnorm=False)
 
     def forward(self, w, r_emb, r_w_bias, r_bias, attn_mask=None, mems=None):
         # r_emb: [klen, n_head, d_head], used for term B
@@ -195,6 +123,52 @@ class RelPartialLearnableMultiHeadAttention(RelMultiHeadAttention):
             output = self.layer_norm(w + attn_out)
 
         return output
+
+    def _parallelogram_mask(self, h, w, left=False):
+        mask = torch.ones((h, w)).byte()
+        m = min(h, w)
+        mask[:m, :m] = torch.triu(mask[:m, :m])
+        mask[-m:, -m:] = torch.tril(mask[-m:, -m:])
+
+        if left:
+            return mask
+        else:
+            return mask.flip(0)
+
+    def _shift(self, x, qlen, klen, mask, left=False):
+        if qlen > 1:
+            zero_pad = torch.zeros((x.size(0), qlen - 1, x.size(2), x.size(3)),
+                                   device=x.device,
+                                   dtype=x.dtype)
+        else:
+            zero_pad = torch.zeros(0, device=x.device, dtype=x.dtype)
+
+        if left:
+            mask = mask.flip(1)
+            x_padded = torch.cat([zero_pad, x], dim=1).expand(qlen, -1, -1, -1)
+        else:
+            x_padded = torch.cat([x, zero_pad], dim=1).expand(qlen, -1, -1, -1)
+
+        x = x_padded.masked_select(mask[:,:,None,None]) \
+                    .view(qlen, klen, x.size(2), x.size(3))
+
+        return x
+
+    def _rel_shift(self, x, zero_triu=False):
+        zero_pad = torch.zeros((x.size(0), 1, *x.size()[2:]),
+                               device=x.device,
+                               dtype=x.dtype)
+        x_padded = torch.cat([zero_pad, x], dim=1)
+
+        x_padded = x_padded.view(x.size(1) + 1, x.size(0), *x.size()[2:])
+
+        x = x_padded[1:].view_as(x)
+
+        if zero_triu:
+            ones = torch.ones((x.size(0), x.size(1)))
+            x = x * torch.tril(ones, x.size(1) - x.size(0))[:, :, None, None]
+
+        return x
 
     def get_input_dim(self) -> int:
         """
